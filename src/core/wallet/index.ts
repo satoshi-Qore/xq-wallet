@@ -35,3 +35,9 @@ export type {
   ImportWalletOptions,
   CreateWalletResult,
 } from './WalletService'
+
+// ─── Chain Adapter Types (re-exported for WalletService consumers) ─────────
+// SignResult and VerifyParams are returned/accepted by WalletService.signMessage
+// and WalletService.verifySignature. Re-exported here so callers only need
+// one import path: '@/core/wallet'.
+export type { SignResult, VerifyParams } from '@/core/chain/adapters'

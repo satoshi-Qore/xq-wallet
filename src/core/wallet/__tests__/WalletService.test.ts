@@ -517,3 +517,123 @@ describe('WalletService — deterministic generation', () => {
     expect(account.addresses.find((a) => a.vm === 'evm')?.address).toBe(KNOWN_EVM.index1)
   })
 })
+
+// ─── validateAddress() ────────────────────────────────────────────────────────
+
+describe('validateAddress()', () => {
+  let svc: WalletService
+
+  beforeEach(() => {
+    svc = new WalletService({ pbkdf2Iterations: 1 })
+  })
+
+  it('returns true for a valid EVM address', () => {
+    expect(svc.validateAddress('0x9858EfFD232B4033E47d90003D41EC34EcaEda94', 'evm')).toBe(true)
+  })
+
+  it('returns false for an invalid EVM address', () => {
+    expect(svc.validateAddress('not-an-address', 'evm')).toBe(false)
+  })
+
+  it('returns true for a valid SVM address', () => {
+    expect(svc.validateAddress('GjJyeC1r2RgkuoCWMyPYkCWSGSGLcz266EaAkLA27AhL', 'svm')).toBe(true)
+  })
+
+  it('returns false for an invalid SVM address', () => {
+    expect(svc.validateAddress('0xinvalid_solana', 'svm')).toBe(false)
+  })
+
+  it('returns true for a valid native address', () => {
+    expect(svc.validateAddress('0x' + 'ab12'.repeat(10), 'native')).toBe(true)
+  })
+
+  it('returns false for an invalid native address', () => {
+    expect(svc.validateAddress('not-native', 'native')).toBe(false)
+  })
+})
+
+// ─── signMessage() ────────────────────────────────────────────────────────────
+
+describe('signMessage()', () => {
+  let svc: WalletService
+  const message = new TextEncoder().encode('test message for signing')
+
+  beforeEach(async () => {
+    svc = new WalletService({ pbkdf2Iterations: 1 })
+    await svc.importWallet({ mnemonic: MNEMONIC_1, password: 'password123' })
+  })
+
+  it('throws DECRYPTION_FAILED when wallet is locked', async () => {
+    svc.lockWallet()
+    await expect(svc.signMessage(message, 0, 'evm')).rejects.toMatchObject({
+      code: 'DECRYPTION_FAILED',
+    })
+  })
+
+  it('signs an EVM message and returns 64-byte signature', async () => {
+    const result = await svc.signMessage(message, 0, 'evm')
+    expect(result.signature).toBeInstanceOf(Uint8Array)
+    expect(result.signature.byteLength).toBe(64)
+    expect(result.signatureHex).toMatch(/^[0-9a-f]{128}$/)
+  })
+
+  it('signs an SVM message and returns 64-byte signature', async () => {
+    const result = await svc.signMessage(message, 0, 'svm')
+    expect(result.signature).toBeInstanceOf(Uint8Array)
+    expect(result.signature.byteLength).toBe(64)
+  })
+
+  it('signs a native message and returns 64-byte signature', async () => {
+    const result = await svc.signMessage(message, 0, 'native')
+    expect(result.signature).toBeInstanceOf(Uint8Array)
+    expect(result.signature.byteLength).toBe(64)
+  })
+
+  it('EVM sign + verifySignature round-trip succeeds', async () => {
+    const accounts = svc.getAccounts()
+    const evmEntry = accounts[0].addresses.find((a) => a.vm === 'evm')
+    if (!evmEntry) throw new Error('no evm entry')
+    const result = await svc.signMessage(message, 0, 'evm')
+    expect(
+      svc.verifySignature('evm', {
+        publicKeyHex: evmEntry.publicKeyHex,
+        message,
+        signature: result.signature,
+      }),
+    ).toBe(true)
+  })
+
+  it('SVM sign + verifySignature round-trip succeeds', async () => {
+    const accounts = svc.getAccounts()
+    const svmEntry = accounts[0].addresses.find((a) => a.vm === 'svm')
+    if (!svmEntry) throw new Error('no svm entry')
+    const result = await svc.signMessage(message, 0, 'svm')
+    expect(
+      svc.verifySignature('svm', {
+        publicKeyHex: svmEntry.publicKeyHex,
+        message,
+        signature: result.signature,
+      }),
+    ).toBe(true)
+  })
+
+  it('verifySignature returns false for tampered message', async () => {
+    const accounts = svc.getAccounts()
+    const evmEntry = accounts[0].addresses.find((a) => a.vm === 'evm')
+    if (!evmEntry) throw new Error('no evm entry')
+    const result = await svc.signMessage(message, 0, 'evm')
+    expect(
+      svc.verifySignature('evm', {
+        publicKeyHex: evmEntry.publicKeyHex,
+        message: new TextEncoder().encode('different message'),
+        signature: result.signature,
+      }),
+    ).toBe(false)
+  })
+
+  it('throws DERIVATION_FAILED for invalid account index', async () => {
+    await expect(svc.signMessage(message, -1, 'evm')).rejects.toMatchObject({
+      code: 'DERIVATION_FAILED',
+    })
+  })
+})

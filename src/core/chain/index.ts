@@ -19,3 +19,7 @@ export { NullChainProvider } from './NullChainProvider'
 
 // ─── Chain Definitions ─────────────────────────────────────────────────────
 export { qorechainDevnet, ethereumSepolia, solanaDevnet, DEFAULT_CHAINS } from './definitions'
+
+// ─── Chain Adapters ────────────────────────────────────────────────────────
+export type { IChainAdapter, SignResult, VerifyParams } from './adapters'
+export { getAdapter, EvmChainAdapter, SvmChainAdapter, NativeChainAdapter } from './adapters'

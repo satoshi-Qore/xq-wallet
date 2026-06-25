@@ -17,7 +17,7 @@
  */
 
 import { mnemonicToSeed } from '@/core/crypto/seed'
-import { createMasterNode } from '@/core/crypto/hd'
+import { createMasterNode, derivePath } from '@/core/crypto/hd'
 import { WalletError } from '@/domain/errors'
 import type {
   EVMAddressEntry,
@@ -26,9 +26,9 @@ import type {
   AccountMetadata,
   AddressEntry,
 } from '@/domain/wallet'
-import { assertValidAccountIndex } from './paths'
+import { assertValidAccountIndex, evmPath, nativePath } from './paths'
 import { deriveEvmAddress } from './adapters/EvmAddressAdapter'
-import { deriveSvmAddress } from './adapters/SvmAddressAdapter'
+import { deriveSvmAddress, deriveEd25519PrivateKey } from './adapters/SvmAddressAdapter'
 import { deriveNativeAddress } from './adapters/NativeAddressAdapter'
 
 // ─── Options ───────────────────────────────────────────────────────────────
@@ -214,5 +214,50 @@ export async function deriveAllAccounts(
 function assertValidChainId(chainId: string): void {
   if (typeof chainId !== 'string' || chainId.trim().length === 0) {
     throw new WalletError('DERIVATION_FAILED', 'Chain ID must be a non-empty string.')
+  }
+}
+
+// ─── Private Key Derivation (for signing) ──────────────────────────────────
+//
+// These exports are intentionally NOT re-exported from the public barrel
+// (src/core/wallet/index.ts). They exist solely for WalletService.signMessage()
+// which needs to derive a private key transiently, use it, and zero it.
+// SEC-01: caller must zero the returned Uint8Array immediately after use.
+
+/**
+ * Derives the raw 32-byte private key for the specified account and VM.
+ *
+ * Called only by WalletService.signMessage(). The returned key material MUST
+ * be zeroed by the caller immediately after use (SEC-01).
+ *
+ * @param mnemonic     - Plaintext BIP-39 mnemonic (from WalletService session).
+ * @param accountIndex - BIP-44 account index (0-based).
+ * @param vm           - Virtual machine type ('evm' | 'svm' | 'native').
+ * @returns 32-byte private key scalar. Caller is responsible for zeroing.
+ * @throws WalletError('DERIVATION_FAILED') on any key derivation failure.
+ */
+export async function derivePrivateKeyForSigning(
+  mnemonic: string,
+  accountIndex: number,
+  vm: 'evm' | 'svm' | 'native',
+): Promise<Uint8Array> {
+  assertValidAccountIndex(accountIndex)
+  const seed = await mnemonicToSeed(mnemonic)
+  try {
+    if (vm === 'svm') {
+      // SLIP-0010 Ed25519 path: m/44'/501'/{accountIndex}'
+      return deriveEd25519PrivateKey(seed, accountIndex)
+    }
+    // secp256k1 BIP-32/44 path — EVM and Native share the same curve
+    const masterNode = createMasterNode(seed)
+    const path = vm === 'evm' ? evmPath(accountIndex) : nativePath(accountIndex)
+    const child = derivePath(masterNode, path)
+    if (!child.privateKey) {
+      throw new WalletError('DERIVATION_FAILED', 'BIP-32 child key has no private key material.')
+    }
+    // Copy into a new buffer — HDKey.privateKey is the library's internal slice
+    return new Uint8Array(child.privateKey)
+  } finally {
+    seed.fill(0) // SEC-01: zero seed regardless of success or failure
   }
 }

@@ -32,7 +32,14 @@ import { WalletError } from '@/domain/errors'
 import type { WalletMetadata, AccountMetadata, WordCount } from '@/domain/wallet'
 import type { EncryptedVault, VaultPayload, PBKDF2Params } from '@/domain/vault'
 import { generate, assertValidMnemonic } from '@/core/crypto'
-import { deriveAllAccounts, type DeriveAllAccountsOptions } from './derive'
+import {
+  deriveAllAccounts,
+  derivePrivateKeyForSigning,
+  type DeriveAllAccountsOptions,
+} from './derive'
+import { getAdapter } from '@/core/chain/adapters'
+import type { SignResult, VerifyParams } from '@/core/chain/adapters'
+import type { VMType } from '@/domain/chain'
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -248,6 +255,61 @@ export class WalletService {
     }
 
     return account
+  }
+
+  // ─── Chain Adapter Integration ────────────────────────────────────────────
+
+  /**
+   * Validates whether an address string is structurally well-formed for the
+   * given VM. Does not require the wallet to be unlocked.
+   *
+   * @param address - Candidate address string.
+   * @param vm      - Virtual machine type to validate against.
+   * @returns true if the address is valid, false otherwise. Never throws.
+   * @throws WalletError('UNSUPPORTED_VM') if vm is not a known VMType.
+   */
+  validateAddress(address: string, vm: VMType): boolean {
+    return getAdapter(vm).isValidAddress(address)
+  }
+
+  /**
+   * Signs raw message bytes with the private key for the given account and VM.
+   *
+   * The private key is derived transiently from the session mnemonic and zeroed
+   * immediately after signing. The mnemonic itself is never forwarded to the
+   * adapter. (SEC-01)
+   *
+   * @param message      - Raw bytes to sign. Pre-hashing is adapter-specific.
+   * @param accountIndex - BIP-44 account index to sign with.
+   * @param vm           - Virtual machine type determining the signing algorithm.
+   * @returns SignResult containing signature bytes and hex encoding.
+   * @throws WalletError('VAULT_NOT_FOUND')   if no wallet exists.
+   * @throws WalletError('DECRYPTION_FAILED') if the wallet is locked.
+   * @throws WalletError('DERIVATION_FAILED') on key derivation or signing failure.
+   */
+  async signMessage(message: Uint8Array, accountIndex: number, vm: VMType): Promise<SignResult> {
+    this._assertUnlocked()
+    const adapter = getAdapter(vm)
+    const privateKey = await derivePrivateKeyForSigning(this.sessionMnemonic!, accountIndex, vm)
+    try {
+      return adapter.sign(privateKey, message)
+    } finally {
+      privateKey.fill(0) // SEC-01: zero private key immediately after use
+    }
+  }
+
+  /**
+   * Verifies a signature against the original message and a public key.
+   * Does not require the wallet to be unlocked.
+   *
+   * @param vm     - Virtual machine type determining the verification algorithm.
+   * @param params - publicKeyHex, message, and signature.
+   * @returns true if the signature is valid, false otherwise.
+   * @throws WalletError('UNSUPPORTED_VM')   if vm is not a known VMType.
+   * @throws WalletError('INVALID_ADDRESS')  if publicKeyHex is malformed.
+   */
+  verifySignature(vm: VMType, params: VerifyParams): boolean {
+    return getAdapter(vm).verify(params)
   }
 
   // ─── Private Helpers ──────────────────────────────────────────────────────
