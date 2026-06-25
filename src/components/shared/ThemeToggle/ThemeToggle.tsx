@@ -68,9 +68,7 @@ export function ThemeToggle({ className }: { className?: string }) {
         ) : (
           <Sun className="h-4 w-4" aria-hidden="true" />
         )
-      ) : (
-        <span className="h-4 w-4" aria-hidden="true" />
-      )}
+      ) : null}
     </button>
   )
 }

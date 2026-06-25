@@ -147,7 +147,6 @@ export function MobileSidebarDrawer() {
                       )}
                       aria-hidden="true"
                     />
-                    <span>{item.label}</span>
                   </Link>
                 </li>
               )
@@ -158,7 +157,7 @@ export function MobileSidebarDrawer() {
         {/* Divider */}
         <div className="mx-4 h-px bg-[hsl(var(--border))]" aria-hidden="true" />
 
-        {/* Footer */}
+        {/* Footer: network badge + theme toggle */}
         <div className="flex items-center justify-between px-4 py-4">
           <NetworkBadge network="devnet" />
           <ThemeToggle />

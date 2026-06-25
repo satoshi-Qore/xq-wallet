@@ -76,6 +76,7 @@ export function NetworkBadge({ network, className }: NetworkBadgeProps) {
         <span className={cn('relative inline-flex h-1.5 w-1.5 rounded-full', config.dotClass)} />
       </span>
       {config.label}
+      {config.label}
     </span>
   )
 }

@@ -70,9 +70,7 @@ export function Header() {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        <div className="hidden sm:flex">
-          <NetworkBadge network="devnet" />
-        </div>
+        <NetworkBadge network="devnet" className="hidden sm:inline-flex" />
         <ThemeToggle />
       </div>
     </header>

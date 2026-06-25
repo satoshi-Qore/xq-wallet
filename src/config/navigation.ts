@@ -80,8 +80,8 @@ export const BOTTOM_NAV_ITEMS = NAV_ITEMS.filter((item) => item.showInBottomNav)
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 /**
- * Returns true if a nav item should be considered active for the given pathname.
- * Dashboard uses exact-match to prevent it from matching all child routes.
+ * Returns true if the given nav item matches the current pathname.
+ * Dashboard matches only exact; all other routes use startsWith.
  */
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))

@@ -25,7 +25,7 @@ export default function ReceivePage() {
         <p className="mt-2 max-w-sm text-sm text-[hsl(var(--muted))]">
           {STUBS.receive.description}
         </p>
-        <span className="mt-4 inline-flex items-center rounded-full bg-surface-subtle px-3 py-1 text-xs font-medium text-[hsl(var(--muted))]">
+        <span className="mt-4 inline-flex items-center rounded-full bg-surface-subtle px-3 py-1 text-xs font-medium text-[hsl(var(--muted)))]">
           {STUBS.comingSoon}
         </span>
       </div>
