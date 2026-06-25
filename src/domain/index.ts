@@ -34,3 +34,17 @@ export { WalletError } from './errors'
 
 // Onboarding
 export type { OnboardingMode, OnboardingStep, OnboardingState } from './onboarding'
+
+// Assets
+export type {
+  AssetType,
+  Asset,
+  NativeAsset,
+  TokenAsset,
+  NFTAsset,
+  AnyAsset,
+  Balance,
+  PortfolioEntry,
+  Portfolio,
+} from './asset'
+export { isNativeAsset, isTokenAsset, isNFTAsset } from './asset'

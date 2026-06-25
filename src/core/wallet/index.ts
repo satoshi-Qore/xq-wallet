@@ -41,3 +41,7 @@ export type {
 // and WalletService.verifySignature. Re-exported here so callers only need
 // one import path: '@/core/wallet'.
 export type { SignResult, VerifyParams } from '@/core/chain/adapters'
+
+// ─── Asset Layer (re-exported for WalletService consumers) ─────────────────
+// Types returned by WalletService.getAsset / listAssets / getBalance / getPortfolio.
+export type { AnyAsset, Balance, Portfolio, PortfolioEntry } from '@/domain/asset'

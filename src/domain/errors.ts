@@ -51,6 +51,12 @@ export type WalletErrorCode =
   /** A chain definition with the same id was already registered in ChainRegistry */
   | 'CHAIN_ALREADY_REGISTERED'
 
+  // ── Asset Registry ───────────────────────────────────────────────────────
+  /** An asset with the same id was already registered in AssetRegistry */
+  | 'ASSET_ALREADY_REGISTERED'
+  /** No asset matching the requested id or symbol was found in AssetRegistry */
+  | 'ASSET_NOT_FOUND'
+
   // ── Key Derivation ───────────────────────────────────────────────────────
   /** BIP-32 child key derivation failed (extremely rare — curve order hit) */
   | 'DERIVATION_FAILED'
@@ -119,7 +125,7 @@ export class WalletError extends Error {
     this.internalCause = internalCause
 
     // Restore the prototype chain so `instanceof WalletError` works correctly
-    // after TypeScript compilation to ES5/ES2017 targets.
+    // after TypeScript compilation to ES5/ES2017 target
     Object.setPrototypeOf(this, new.target.prototype)
   }
 

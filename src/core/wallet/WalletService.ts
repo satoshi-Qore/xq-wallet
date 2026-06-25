@@ -31,6 +31,7 @@
 import { WalletError } from '@/domain/errors'
 import type { WalletMetadata, AccountMetadata, WordCount } from '@/domain/wallet'
 import type { EncryptedVault, VaultPayload, PBKDF2Params } from '@/domain/vault'
+import type { AnyAsset, Balance, Portfolio, PortfolioEntry } from '@/domain/asset'
 import { generate, assertValidMnemonic } from '@/core/crypto'
 import {
   deriveAllAccounts,
@@ -40,6 +41,10 @@ import {
 import { getAdapter } from '@/core/chain/adapters'
 import type { SignResult, VerifyParams } from '@/core/chain/adapters'
 import type { VMType } from '@/domain/chain'
+import { AssetRegistry } from '@/core/asset/AssetRegistry'
+import type { IBalanceProvider } from '@/core/asset/IBalanceProvider'
+import { MockBalanceProvider } from '@/core/asset/MockBalanceProvider'
+import { createDefaultAssetRegistry } from '@/core/asset/defaultAssets'
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -69,6 +74,24 @@ export interface WalletServiceOptions {
    *   new WalletService({ pbkdf2Iterations: 1 })
    */
   readonly pbkdf2Iterations?: number
+
+  /**
+   * Asset registry used for `getAsset`, `listAssets`, `getBalance`, and
+   * `getPortfolio`. Defaults to a registry pre-populated with the three
+   * default devnet native assets (QR, SEP, SOL).
+   *
+   * Inject a custom registry in tests or when adding token assets.
+   */
+  readonly assetRegistry?: AssetRegistry
+
+  /**
+   * Balance provider for on-chain balance queries.
+   * Defaults to `MockBalanceProvider` (deterministic in-memory values).
+   *
+   * Sprint 3: inject an RPC-backed provider (EthersBalanceProvider,
+   * SolanaBalanceProvider, NativeBalanceProvider) to switch from mock data.
+   */
+  readonly balanceProvider?: IBalanceProvider
 }
 
 export interface CreateWalletOptions {
@@ -107,6 +130,12 @@ export interface CreateWalletResult {
 export class WalletService {
   private readonly pbkdf2Iterations: number
 
+  /** Asset catalogue. Injected via constructor; defaults to DEFAULT_ASSETS. */
+  private readonly assetRegistry: AssetRegistry
+
+  /** Balance provider. Injected via constructor; defaults to MockBalanceProvider. */
+  private readonly balanceProvider: IBalanceProvider
+
   /** In-memory encrypted vault. null until createWallet / importWallet. */
   private encryptedVault: EncryptedVault | null = null
 
@@ -123,6 +152,8 @@ export class WalletService {
 
   constructor(options: WalletServiceOptions = {}) {
     this.pbkdf2Iterations = options.pbkdf2Iterations ?? DEFAULT_PBKDF2_ITERATIONS
+    this.assetRegistry = options.assetRegistry ?? createDefaultAssetRegistry()
+    this.balanceProvider = options.balanceProvider ?? new MockBalanceProvider()
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -312,6 +343,108 @@ export class WalletService {
     return getAdapter(vm).verify(params)
   }
 
+  // ─── Asset Layer ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns the asset definition for the given id from the registry,
+   * or `undefined` if no asset with that id is registered.
+   *
+   * Does not require the wallet to be unlocked.
+   *
+   * @param id - Unique asset id (e.g. `"qorechain-devnet:native:QR"`).
+   */
+  getAsset(id: string): AnyAsset | undefined {
+    return this.assetRegistry.getById(id)
+  }
+
+  /**
+   * Returns all registered assets, optionally filtered to a single VM.
+   *
+   * Does not require the wallet to be unlocked.
+   *
+   * @param vm - When provided, only assets on this VM are returned.
+   *             When omitted, all registered assets are returned.
+   */
+  listAssets(vm?: VMType): AnyAsset[] {
+    return vm !== undefined ? this.assetRegistry.getByVM(vm) : this.assetRegistry.list()
+  }
+
+  /**
+   * Returns the balance of a single asset at the given address.
+   *
+   * Does not require the wallet to be unlocked — any address may be queried.
+   *
+   * @param address - On-chain address to query.
+   * @param assetId - Asset id to query (must be registered in the AssetRegistry).
+   * @returns Balance snapshot in the smallest unit (bigint).
+   * @throws WalletError('ASSET_NOT_FOUND') if no asset with that id is registered.
+   */
+  async getBalance(address: string, assetId: string): Promise<Balance> {
+    const asset = this.assetRegistry.getById(assetId)
+    if (asset === undefined) {
+      throw new WalletError('ASSET_NOT_FOUND', `No asset found with id '${assetId}'.`)
+    }
+    return this.balanceProvider.getBalance(address, asset)
+  }
+
+  /**
+   * Returns balances for all registered assets across all address entries
+   * of the given account.
+   *
+   * Assets are matched to address entries by VM type. One PortfolioEntry is
+   * produced per (asset, address) pair where the asset's VM matches the
+   * address entry's VM.
+   *
+   * Does not require the wallet to be unlocked — accounts hold only public data.
+   *
+   * @param accountIndex - BIP-44 account index (0-based).
+   * @returns Ordered array of { asset, balance, address } entries.
+   * @throws WalletError('VAULT_NOT_FOUND') if no wallet has been created/imported.
+   * @throws WalletError('DERIVATION_FAILED') if accountIndex is out of range.
+   */
+  async getBalances(accountIndex: number): Promise<ReadonlyArray<PortfolioEntry>> {
+    const account = this._getAccount(accountIndex)
+    const entries: PortfolioEntry[] = []
+
+    for (const addressEntry of account.addresses) {
+      const vmAssets = this.assetRegistry.getByVM(addressEntry.vm)
+      if (vmAssets.length === 0) continue
+      const results = await this.balanceProvider.getBalances(addressEntry.address, vmAssets)
+      for (const { asset, balance } of results) {
+        entries.push({ asset, balance, address: addressEntry.address })
+      }
+    }
+
+    return entries
+  }
+
+  /**
+   * Builds a Portfolio snapshot for the given account.
+   *
+   * The portfolio aggregates all asset balances across all VMs for this account.
+   * No fiat conversion is applied (Sprint 2).
+   *
+   * Does not require the wallet to be unlocked.
+   *
+   * @param accountIndex - BIP-44 account index (0-based).
+   * @returns Portfolio snapshot with entries, totalAssets, and updatedAt timestamp.
+   * @throws WalletError('VAULT_NOT_FOUND') if no wallet has been created/imported.
+   * @throws WalletError('DERIVATION_FAILED') if accountIndex is out of range.
+   */
+  async getPortfolio(accountIndex: number): Promise<Portfolio> {
+    if (!this.walletMetadata) {
+      throw new WalletError('VAULT_NOT_FOUND', 'No wallet found. Create or import a wallet first.')
+    }
+    const entries = await this.getBalances(accountIndex)
+    return {
+      walletId: this.walletMetadata.id,
+      accountIndex,
+      entries,
+      totalAssets: entries.length,
+      updatedAt: Date.now(),
+    }
+  }
+
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
   private _assertUnlocked(): void {
@@ -324,6 +457,20 @@ export class WalletService {
         'Wallet is locked. Unlock the wallet before performing this action.',
       )
     }
+  }
+
+  private _getAccount(accountIndex: number): AccountMetadata {
+    if (!this.walletMetadata) {
+      throw new WalletError('VAULT_NOT_FOUND', 'No wallet found. Create or import a wallet first.')
+    }
+    const account = this.walletMetadata.accounts[accountIndex]
+    if (!account) {
+      throw new WalletError(
+        'DERIVATION_FAILED',
+        `Account index ${accountIndex} does not exist. Derive it first with deriveNextAccount().`,
+      )
+    }
+    return account
   }
 
   private async _initWallet(
