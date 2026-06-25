@@ -47,6 +47,10 @@ export type WalletErrorCode =
   /** Vault schema version is newer than this build supports — app needs update */
   | 'VAULT_VERSION_UNSUPPORTED'
 
+  // ── Chain Registry ──────────────────────────────────────────────────────────
+  /** A chain definition with the same id was already registered in ChainRegistry */
+  | 'CHAIN_ALREADY_REGISTERED'
+
   // ── Key Derivation ───────────────────────────────────────────────────────
   /** BIP-32 child key derivation failed (extremely rare — curve order hit) */
   | 'DERIVATION_FAILED'

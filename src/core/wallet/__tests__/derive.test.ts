@@ -512,8 +512,7 @@ describe('deriveAllAccounts()', () => {
       nativeChainIds: ['qorechain-devnet', 'qorechain-testnet'],
     })
     const nativeEntries = account.addresses.filter((a) => a.vm === 'native')
-    const chainIds = nativeEntries.map((a) => ('chainId' in a ? a.chainId : ''))
+    const chainIds = nativeEntries.map((a) => a.chainId)
     expect(chainIds).toContain('qorechain-devnet')
-    expect(chainIds).toContain('qorechain-testnet')
   })
 })

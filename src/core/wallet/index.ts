@@ -26,3 +26,12 @@ export {
   SVM_COIN_TYPE,
   NATIVE_COIN_TYPE,
 } from './paths'
+
+// ─── Wallet Engine ─────────────────────────────────────────────────────────
+export { WalletService } from './WalletService'
+export type {
+  WalletServiceOptions,
+  CreateWalletOptions,
+  ImportWalletOptions,
+  CreateWalletResult,
+} from './WalletService'
