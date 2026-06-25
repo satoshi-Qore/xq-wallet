@@ -1,0 +1,31 @@
+/**
+ * Design token overrides and additional CSS custom properties.
+ * Imported by globals.css if needed for extended theming.
+ *
+ * These complement the Tailwind config — use Tailwind utilities first;
+ * fall back to these tokens for things Tailwind can't express.
+ */
+
+:root {
+  /* Spacing scale extensions */
+  --space-18: 4.5rem;
+  --space-22: 5.5rem;
+
+  /* Shadow tokens */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
+  --shadow-modal: 0 20px 25px -5px rgb(0 0 0 / 0.15), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Transition presets */
+  --transition-fast: 100ms ease-in-out;
+  --transition-base: 200ms ease-in-out;
+  --transition-slow: 300ms ease-out;
+
+  /* Z-index scale */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
+}

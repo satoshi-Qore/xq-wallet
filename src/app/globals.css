@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Custom Properties ──────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --surface: 0 0% 100%;
+    --surface-subtle: 0 0% 97%;
+    --surface-elevated: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --muted: 215 16% 47%;
+    --border: 220 13% 91%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --surface: 222 47% 6%;
+    --surface-subtle: 222 47% 9%;
+    --surface-elevated: 222 47% 12%;
+    --foreground: 210 40% 98%;
+    --muted: 215 20% 65%;
+    --border: 217 33% 17%;
+  }
+}
+
+/* ─── Base resets ────────────────────────────────────────────────────────── */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), system-ui, sans-serif;
+    line-height: 1.5;
+  }
+
+  /* Remove default list styles when inside nav */
+  nav ul,
+  nav ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+}
