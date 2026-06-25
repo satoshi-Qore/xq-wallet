@@ -4,7 +4,7 @@
  */
 
 export { usePreferencesStore } from './preferencesStore'
-export type { PreferencesState, Theme, FiatCurrency, AutoLockMinutes } from './preferencesStore'
+export type { PreferencesState, FiatCurrency, AutoLockMinutes } from './preferencesStore'
 
 export { useUIStore } from './uiStore'
 export type { UIState, Toast, ToastVariant, ModalId } from './uiStore'

@@ -1,32 +1,27 @@
 'use client'
 
 /**
- * AppShell — the top-level layout wrapper for authenticated wallet screens.
+ * AppShell — top-level layout wrapper for all authenticated wallet screens.
  *
  * Desktop layout (≥ 1024px):
  *   ┌──────────┬─────────────────────────────┐
  *   │          │  Header                     │
  *   │ Sidebar  ├─────────────────────────────┤
- *   │ (240px)  │  main (scrollable)          │
- *   │          │                             │
+ *   │ (240px)  │  <main> (scrollable)        │
  *   └──────────┴─────────────────────────────┘
  *
  * Mobile layout (< 1024px):
  *   ┌─────────────────────────────┐
  *   │  Header (hamburger)         │
  *   ├─────────────────────────────┤
- *   │  main (scrollable)          │
- *   │                             │
+ *   │  <main> (scrollable)        │
  *   ├─────────────────────────────┤
  *   │  BottomNav (fixed)          │
  *   └─────────────────────────────┘
- *
- * Mobile sidebar opens as an overlay drawer controlled by uiStore.isSidebarOpen.
  */
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
 import { useUIStore } from '@/lib/stores'
 import { useIsDesktop } from '@/hooks'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -35,7 +30,7 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { MobileSidebarDrawer } from './MobileSidebarDrawer'
 
 interface AppShellProps {
-  children: React.ReactNode
+  children: ReactNode
 }
 
 export function AppShell({ children }: AppShellProps) {
@@ -48,13 +43,14 @@ export function AppShell({ children }: AppShellProps) {
     closeSidebar()
   }, [pathname, closeSidebar])
 
-  // Close mobile drawer when screen becomes desktop
+  // Close mobile drawer when viewport becomes desktop width
   useEffect(() => {
     if (isDesktop) closeSidebar()
   }, [isDesktop, closeSidebar])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--surface-subtle)]">
+    // P0-01: bg-surface-subtle Tailwind token
+    <div className="flex h-screen overflow-hidden bg-surface-subtle">
       {/* Desktop sidebar — always visible on lg+ */}
       <Sidebar />
 
@@ -65,20 +61,10 @@ export function AppShell({ children }: AppShellProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
 
-        {/* Scrollable page area */}
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={cn(
-            'flex-1 overflow-y-auto',
-            // Bottom padding to clear the BottomNav on mobile
-            'pb-14 lg:pb-0',
-          )}
-        >
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto pb-14 lg:pb-0">
           {children}
         </main>
 
-        {/* Mobile bottom navigation */}
         <BottomNav />
       </div>
     </div>

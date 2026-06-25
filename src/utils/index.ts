@@ -1,6 +1,9 @@
 /**
  * Shared utility functions for XQ Wallet.
  * Keep functions pure, small, and well-typed.
+ *
+ * Note: Class-name merging lives in @/lib/utils (clsx + tailwind-merge).
+ * Do NOT add a competing cn() here.
  */
 
 import type { Address } from '@/types'
@@ -14,13 +17,6 @@ import type { Address } from '@/types'
 export function shortenAddress(address: Address | string, chars = 4): string {
   if (!address || address.length < chars * 2 + 2) return address
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
-}
-
-/**
- * Conditionally joins class names. Lightweight alternative to clsx.
- */
-export function cn(...classes: Array<string | undefined | null | false>): string {
-  return classes.filter(Boolean).join(' ')
 }
 
 // ─── Number helpers ────────────────────────────────────────────────────────
@@ -58,9 +54,7 @@ export function truncateDecimals(value: string, places: number): string {
  * Wraps a promise and returns [data, null] on success or [null, error] on failure.
  * Eliminates repetitive try/catch blocks.
  */
-export async function tryCatch<T>(
-  promise: Promise<T>,
-): Promise<[T, null] | [null, Error]> {
+export async function tryCatch<T>(promise: Promise<T>): Promise<[T, null] | [null, Error]> {
   try {
     const data = await promise
     return [data, null]

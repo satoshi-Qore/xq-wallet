@@ -1,20 +1,22 @@
 /**
- * NetworkBadge — displays the active network with a status indicator dot.
+ * NetworkBadge — displays the active network with an animated status dot.
  *
  * Variants:
  *   mainnet  → green   (production)
  *   testnet  → yellow  (testing)
  *   devnet   → blue    (development)
  *
- * This component receives the network as a prop in Sprint 1.
- * In Sprint 2+ it will read from networkStore.
+ * Sprint 1: receives network as a prop.
+ * Sprint 2+: will read from networkStore.
  */
 
+import type { NetworkEnvironment } from '@/types'
 import { cn } from '@/lib/utils'
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// Re-export so consumers can import from this module if needed.
+export type { NetworkEnvironment }
 
-export type NetworkEnvironment = 'mainnet' | 'testnet' | 'devnet'
+// ─── Types ─────────────────────────────────────────────────────────────────
 
 interface NetworkBadgeProps {
   network: NetworkEnvironment
@@ -63,7 +65,7 @@ export function NetworkBadge({ network, className }: NetworkBadgeProps) {
         className,
       )}
     >
-      {/* Animated dot */}
+      {/* Animated presence dot */}
       <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
         <span
           className={cn(
@@ -71,12 +73,7 @@ export function NetworkBadge({ network, className }: NetworkBadgeProps) {
             config.dotClass,
           )}
         />
-        <span
-          className={cn(
-            'relative inline-flex h-1.5 w-1.5 rounded-full',
-            config.dotClass,
-          )}
-        />
+        <span className={cn('relative inline-flex h-1.5 w-1.5 rounded-full', config.dotClass)} />
       </span>
       {config.label}
     </span>

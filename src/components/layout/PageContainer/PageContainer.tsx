@@ -7,20 +7,17 @@
  * Not a client component — pure presentational wrapper.
  */
 
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface PageContainerProps {
-  children: React.ReactNode
+  children: ReactNode
   /** Remove max-width constraint for full-bleed layouts */
   fullWidth?: boolean
   className?: string
 }
 
-export function PageContainer({
-  children,
-  fullWidth = false,
-  className,
-}: PageContainerProps) {
+export function PageContainer({ children, fullWidth = false, className }: PageContainerProps) {
   return (
     <div
       className={cn(

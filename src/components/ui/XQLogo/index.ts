@@ -1,0 +1,1 @@
+export { XQLogo } from './XQLogo'

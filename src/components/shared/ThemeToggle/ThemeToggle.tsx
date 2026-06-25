@@ -25,9 +25,12 @@ function getNextTheme(current: string | undefined): 'system' | 'light' | 'dark' 
 
 function getAriaLabel(theme: string | undefined): string {
   switch (theme) {
-    case 'light': return 'Switch to dark mode'
-    case 'dark': return 'Switch to system theme'
-    default: return 'Switch to light mode'
+    case 'light':
+      return 'Switch to dark mode'
+    case 'dark':
+      return 'Switch to system theme'
+    default:
+      return 'Switch to light mode'
   }
 }
 
@@ -49,7 +52,8 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label={getAriaLabel(theme)}
       className={cn(
         'flex h-9 w-9 items-center justify-center rounded-md',
-        'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+        // P0-01: hsl() for muted/foreground, bg-surface-subtle Tailwind token
+        'text-[hsl(var(--muted))] hover:bg-surface-subtle hover:text-[hsl(var(--foreground))]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
         'transition-colors',
         className,
