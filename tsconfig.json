@@ -35,6 +35,7 @@
     /* Path aliases */
     "paths": {
       "@/*": ["./src/*"],
+      "@/domain/*": ["./src/domain/*"],
       "@/components/*": ["./src/components/*"],
       "@/hooks/*": ["./src/hooks/*"],
       "@/lib/*": ["./src/lib/*"],
