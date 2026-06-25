@@ -130,6 +130,15 @@ export class WalletService {
     return this.walletMetadata !== null
   }
 
+  /**
+   * Read-only access to the wallet metadata currently held in memory.
+   * null until createWallet() or importWallet() has been called.
+   * Does not decrypt or touch any key material.
+   */
+  get wallet(): WalletMetadata | null {
+    return this.walletMetadata
+  }
+
   // ─── Create / Import ─────────────────────────────────────────────────────
 
   /**
