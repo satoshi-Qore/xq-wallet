@@ -49,6 +49,10 @@ import { TransactionBuilder } from '@/core/transaction/TransactionBuilder'
 import { TransactionValidator } from '@/core/transaction/TransactionValidator'
 import { MockFeeEstimator } from '@/core/transaction/MockFeeEstimator'
 import type { IFeeEstimator } from '@/core/transaction/IFeeEstimator'
+import { NullRpcProvider } from '@/core/rpc/NullRpcProvider'
+import { RpcProviderRegistry } from '@/core/rpc/RpcProviderRegistry'
+import type { IRpcProvider } from '@/core/rpc/IRpcProvider'
+import type { RpcBlock, RpcTransaction, RpcHealthReport } from '@/domain/rpc'
 import type {
   TransactionRequest,
   FeeEstimate,
@@ -112,6 +116,17 @@ export interface WalletServiceOptions {
    * Sprint 3: inject an RPC-backed estimator to get live fee data.
    */
   readonly feeEstimator?: IFeeEstimator
+
+  /**
+   * RPC provider registry for network operations.
+   * Defaults to a registry pre-populated with NullRpcProvider for each of
+   * the three supported devnet chains (ethereum-sepolia, solana-devnet,
+   * qorechain-devnet).
+   *
+   * Sprint 3: replace individual providers via `registry.replace(provider)`
+   * to enable live RPC without changing any calling code.
+   */
+  readonly rpcRegistry?: RpcProviderRegistry
 }
 
 export interface CreateWalletOptions {
@@ -179,6 +194,9 @@ export class WalletService {
   /** Fee estimator. Injected via constructor; defaults to MockFeeEstimator. */
   private readonly feeEstimator: IFeeEstimator
 
+  /** RPC provider registry. Injected via constructor; defaults to NullRpcProvider for all chains. */
+  private readonly rpcRegistry: RpcProviderRegistry
+
   /** In-memory encrypted vault. null until createWallet / importWallet. */
   private encryptedVault: EncryptedVault | null = null
 
@@ -198,6 +216,7 @@ export class WalletService {
     this.assetRegistry = options.assetRegistry ?? createDefaultAssetRegistry()
     this.balanceProvider = options.balanceProvider ?? new MockBalanceProvider()
     this.feeEstimator = options.feeEstimator ?? new MockFeeEstimator()
+    this.rpcRegistry = options.rpcRegistry ?? createDefaultRpcRegistry()
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -622,6 +641,96 @@ export class WalletService {
     }
   }
 
+  // ─── RPC Layer ────────────────────────────────────────────────────────────
+  //
+  // These methods route to the IRpcProvider registered for the target chain.
+  // Sprint 2: all network-touching methods throw RPC_NOT_CONNECTED (NullRpcProvider).
+  // Sprint 3: replace providers via rpcRegistry.replace(concreteProvider).
+  //
+  // SECURITY: No key material is used or accepted here. Signing always happens
+  // through signMessage / prepareSigningPayload + an external ITransactionSigner.
+
+  /**
+   * Returns the most recently confirmed block on the specified chain.
+   *
+   * @param chainId - ChainDefinition.id to query.
+   * @returns The latest RpcBlock from the chain's RPC node.
+   * @throws WalletError('RPC_NOT_CONNECTED') in Sprint 2 (NullRpcProvider default).
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
+   */
+  async getLatestBlock(chainId: string): Promise<RpcBlock> {
+    return this._getProvider(chainId).getLatestBlock()
+  }
+
+  /**
+   * Broadcasts a signed, serialised transaction to the network.
+   *
+   * The caller must sign the transaction externally (via ITransactionSigner)
+   * and pass the resulting raw bytes here. No key material is accepted.
+   *
+   * @param rawTx   - VM-specific binary encoding of the signed transaction.
+   * @param chainId - ChainDefinition.id of the target chain.
+   * @returns The transaction hash assigned by the network.
+   * @throws WalletError('RPC_NOT_CONNECTED') in Sprint 2 (NullRpcProvider default).
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
+   */
+  async submitTransaction(rawTx: Uint8Array, chainId: string): Promise<string> {
+    return this._getProvider(chainId).sendTransaction(rawTx)
+  }
+
+  /**
+   * Returns the on-chain transaction identified by its hash.
+   *
+   * @param txHash  - Transaction hash (format is VM-specific).
+   * @param chainId - ChainDefinition.id of the chain to query.
+   * @returns RpcTransaction with full on-chain details.
+   * @throws WalletError('RPC_NOT_CONNECTED') in Sprint 2 (NullRpcProvider default).
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
+   */
+  async getTransaction(txHash: string, chainId: string): Promise<RpcTransaction> {
+    return this._getProvider(chainId).getTransaction(txHash)
+  }
+
+  /**
+   * Returns the on-chain balance of an asset at an address via the RPC layer.
+   *
+   * Distinct from `getBalance(address, assetId)` which uses MockBalanceProvider.
+   * This method routes through the RpcProviderRegistry and will return live
+   * on-chain data once a concrete provider is registered in Sprint 3.
+   *
+   * @param address - On-chain address to query.
+   * @param chainId - ChainDefinition.id to query against.
+   * @param assetId - Asset to look up (must be registered in the AssetRegistry).
+   * @returns Balance snapshot from the RPC node.
+   * @throws WalletError('ASSET_NOT_FOUND') if assetId is not registered.
+   * @throws WalletError('RPC_NOT_CONNECTED') in Sprint 2 (NullRpcProvider default).
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
+   */
+  async fetchBalance(address: string, chainId: string, assetId: string): Promise<Balance> {
+    const asset = this.assetRegistry.getById(assetId)
+    if (!asset) {
+      throw new WalletError(
+        'ASSET_NOT_FOUND',
+        `Asset '${assetId}' is not registered. Register it via AssetRegistry.`,
+      )
+    }
+    return this._getProvider(chainId).getBalance(address, asset)
+  }
+
+  /**
+   * Returns a health report for the RPC provider registered for the given chain.
+   *
+   * Unlike other RPC methods, healthCheck() never throws — it always returns
+   * an RpcHealthReport, even when the NullRpcProvider is in use.
+   *
+   * @param chainId - ChainDefinition.id to health-check.
+   * @returns RpcHealthReport describing the endpoint's current availability.
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
+   */
+  async healthCheck(chainId: string): Promise<RpcHealthReport> {
+    return this._getProvider(chainId).healthCheck()
+  }
+
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
   private _assertUnlocked(): void {
@@ -648,6 +757,24 @@ export class WalletService {
       )
     }
     return account
+  }
+
+  /**
+   * Looks up the IRpcProvider registered for `chainId`.
+   *
+   * @param chainId - ChainDefinition.id to look up.
+   * @throws WalletError('INVALID_NETWORK') if no provider is registered.
+   */
+  private _getProvider(chainId: string): IRpcProvider {
+    const provider = this.rpcRegistry.get(chainId)
+    if (provider === undefined) {
+      throw new WalletError(
+        'UNSUPPORTED_CHAIN',
+        `No RPC provider is registered for chain '${chainId}'. ` +
+          'Register a provider via RpcProviderRegistry before making RPC calls.',
+      )
+    }
+    return provider
   }
 
   private async _initWallet(
@@ -691,7 +818,28 @@ export class WalletService {
   }
 }
 
+// ─── RPC Provider Factory ────────────────────────────────────────────────────
+//
+// Module-private — only WalletService should call this. External code that
+// needs a custom registry should construct RpcProviderRegistry directly.
+
+/**
+ * Creates the default RpcProviderRegistry pre-populated with NullRpcProvider
+ * for all three supported devnet chains.
+ *
+ * Sprint 3: swap individual providers via `registry.replace(realProvider)`
+ * without rebuilding the registry.
+ */
+function createDefaultRpcRegistry(): RpcProviderRegistry {
+  const registry = new RpcProviderRegistry()
+  registry.register(new NullRpcProvider('evm', 'ethereum-sepolia'))
+  registry.register(new NullRpcProvider('svm', 'solana-devnet'))
+  registry.register(new NullRpcProvider('native', 'qorechain-devnet'))
+  return registry
+}
+
 // ─── AES-256-GCM Vault Encryption (Web Crypto API) ─────────────────────────
+
 //
 // These functions are module-private. External code must always go through
 // WalletService methods — never call these directly.

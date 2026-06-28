@@ -223,8 +223,10 @@ export class TransactionBuilder {
   // ─── Inspection ────────────────────────────────────────────────────────
 
   /**
-   * Returns a snapshot of the current builder state for debugging or testing.
-   * The returned object is a shallow copy — mutating it does not affect the builder.
+   * Returns a read-only snapshot of the current builder state.
+   *
+   * Intended for debugging and test assertions — not part of the production API.
+   * The returned object is a plain copy; mutating it has no effect on the builder.
    */
   snapshot(): Readonly<BuilderState> {
     return { ...this._state }

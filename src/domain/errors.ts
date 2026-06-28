@@ -66,8 +66,16 @@ export type WalletErrorCode =
   | 'UNSUPPORTED_CHAIN'
 
   // ── Chain / RPC ──────────────────────────────────────────────────────────
-  /** RPC provider is not available — Sprint 2: always thrown by NullChainProvider */
+  /** RPC provider is not available — Sprint 2: always thrown by NullRpcProvider */
   | 'RPC_NOT_CONNECTED'
+  /** RPC request exceeded the configured timeout duration */
+  | 'RPC_TIMEOUT'
+  /** RPC provider rejected the request due to rate limiting */
+  | 'RPC_RATE_LIMITED'
+  /** RPC provider returned a response that could not be parsed */
+  | 'RPC_INVALID_RESPONSE'
+  /** Circuit breaker is open — requests are being rejected fail-fast */
+  | 'RPC_CIRCUIT_OPEN'
   /** Address failed isValidAddress() for the specified VM */
   | 'INVALID_ADDRESS'
 

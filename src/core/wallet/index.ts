@@ -63,3 +63,24 @@ export type {
   TransactionValidationError,
   TransactionValidationField,
 } from '@/domain/transaction'
+// ─── RPC Layer (re-exported for WalletService consumers) ─────────────────────
+// Domain types returned by WalletService RPC methods.
+export type {
+  RpcBlock,
+  RpcTransaction,
+  RpcTransactionStatus,
+  RpcEndpointStatus,
+  RpcHealthReport,
+  RpcFeeData,
+  RetryConfig,
+  CircuitBreakerState,
+  CircuitBreakerConfig,
+} from '@/domain/rpc'
+// RPC infrastructure types for advanced consumers (e.g., Sprint 3 provider injection).
+export type { IRpcProvider } from '@/core/rpc/IRpcProvider'
+export { NullRpcProvider } from '@/core/rpc/NullRpcProvider'
+export { RpcProviderRegistry } from '@/core/rpc/RpcProviderRegistry'
+export type { IRetryStrategy } from '@/core/rpc/RetryStrategy'
+export { ExponentialBackoffRetry, DEFAULT_RETRY_CONFIG } from '@/core/rpc/RetryStrategy'
+export type { ICircuitBreaker } from '@/core/rpc/CircuitBreaker'
+export { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from '@/core/rpc/CircuitBreaker'

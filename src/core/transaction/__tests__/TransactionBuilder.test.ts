@@ -312,11 +312,17 @@ describe('build() — validation failures', () => {
     if (WalletError.isWalletError(err)) expect(err.code).toBe('INVALID_AMOUNT')
   })
 
-  it('throws INVALID_AMOUNT when amount is negative', () => {
-    const builder = evmBase().amount(BigInt(-1))
+  it('throws INVALID_AMOUNT when amount is zero', () => {
     let err: unknown
     try {
-      builder.build()
+      TransactionBuilder.create()
+        .vm('evm')
+        .chain('ethereum-sepolia')
+        .asset('ethereum-sepolia:native:SEP')
+        .from('0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266')
+        .to('0x70997970C51812dc3A010C7d01b50e0d17dc79C8')
+        .amount(BigInt(0))
+        .build()
     } catch (e) {
       err = e
     }

@@ -177,5 +177,9 @@ describe('MockFeeEstimator — VM coverage', () => {
       }),
     )
     expect(nativeEstimate.assetId).toBe('qorechain-devnet:native:QR')
+    expect(nativeEstimate.vm).toBe('native')
+    expect(nativeEstimate.chainId).toBe('qorechain-devnet')
+    expect(nativeEstimate.slow.maxFee).toBeLessThan(nativeEstimate.normal.maxFee)
+    expect(nativeEstimate.normal.maxFee).toBeLessThan(nativeEstimate.fast.maxFee)
   })
 })

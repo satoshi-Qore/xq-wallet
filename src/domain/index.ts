@@ -64,3 +64,16 @@ export type {
   TransactionValidationError,
   TransactionValidationResult,
 } from './transaction'
+
+// RPC
+export type {
+  RpcBlock,
+  RpcTransaction,
+  RpcTransactionStatus,
+  RpcEndpointStatus,
+  RpcHealthReport,
+  RpcFeeData,
+  RetryConfig,
+  CircuitBreakerState,
+  CircuitBreakerConfig,
+} from './rpc'

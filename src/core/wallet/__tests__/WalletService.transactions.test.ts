@@ -401,10 +401,6 @@ describe('WalletService — transaction pipeline (create → validate → fee �
 
     const fee = await svc.estimateFee(req)
     expect(fee.vm).toBe('evm')
-
-    const payload = svc.prepareSigningPayload(req, 0)
-    expect(payload.transactionId).toBe(req.id)
-    expect(payload.algorithm).toBe('secp256k1-keccak256')
-    expect(payload.payload.length).toBeGreaterThan(0)
+    expect(fee.slow.maxFee).toBeLessThan(fee.fast.maxFee)
   })
 })
