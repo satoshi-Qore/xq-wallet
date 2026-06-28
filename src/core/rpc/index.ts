@@ -23,3 +23,32 @@ export { ExponentialBackoffRetry, DEFAULT_RETRY_CONFIG } from './RetryStrategy'
 // ─── Circuit breaker ─────────────────────────────────────────────────────────
 export type { ICircuitBreaker } from './CircuitBreaker'
 export { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from './CircuitBreaker'
+
+// ─── JSON-RPC 2.0 transport (Day 11) ─────────────────────────────────────────
+export type { FetchFn, BatchEntry } from './JsonRpcClient'
+export { JsonRpcClient, JSON_RPC_ERROR_CODES } from './JsonRpcClient'
+export { JsonRpcClientRegistry } from './JsonRpcClientRegistry'
+
+// ─── Health & metrics monitoring (Day 11) ────────────────────────────────────
+export { RpcHealthMonitor } from './RpcHealthMonitor'
+export type { RecordRequestOptions } from './RpcMetricsCollector'
+export { RpcMetricsCollector } from './RpcMetricsCollector'
+
+// ─── Chain-specific provider interfaces (Day 11) ─────────────────────────────
+export type {
+  IEvmRpcProvider,
+  EvmFeeHistory,
+  EvmBlock,
+  EvmTransactionReceipt,
+  EvmLog,
+} from './providers/evm'
+export type {
+  ISolanaRpcProvider,
+  SolanaCommitment,
+  SolanaAccountData,
+  SolanaAccountInfo,
+  SolanaBlockhashResult,
+  SolanaSignatureStatus,
+  SolanaBlock,
+} from './providers/solana'
+export type { IQoreRpcProvider, QoreBlock } from './providers/qore'

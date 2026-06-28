@@ -151,6 +151,10 @@ describe('NullRpcProvider — all supported VMs', () => {
     it(`${provider.vm}:${provider.chainId} — healthCheck returns unavailable`, async () => {
       const report = await provider.healthCheck()
       expect(report.status).toBe('unavailable')
+      expect(report.endpoint).toBe('')
+      expect(report.latencyMs).toBeNull()
+      expect(report.lastSuccessAt).toBeNull()
+      expect(typeof report.errorMessage).toBe('string')
     })
   }
 })

@@ -218,3 +218,177 @@ export interface CircuitBreakerConfig {
    */
   readonly halfOpenMaxCalls: number
 }
+
+// ─── JSON-RPC 2.0 Wire Format ─────────────────────────────────────────────────
+
+/**
+ * Valid JSON-RPC 2.0 request identifier.
+ * Per spec: string, number, or null. We restrict to string | number for
+ * requests (null is only valid in error responses where the id could not
+ * be determined).
+ */
+export type RpcId = string | number
+
+/**
+ * A JSON-RPC 2.0 request object.
+ *
+ * TParams defaults to readonly unknown[] (positional params). Pass a
+ * record type for named params (object-style JSON-RPC calls).
+ */
+export interface RpcRequest<TParams = readonly unknown[]> {
+  readonly jsonrpc: '2.0'
+  readonly id: RpcId
+  readonly method: string
+  /** Omit this field (not undefined) for methods that take no parameters. */
+  readonly params?: TParams
+}
+
+/**
+ * JSON-RPC 2.0 error payload — the wire-format error object inside an
+ * error response. NOT a WalletError; this is the raw node response.
+ *
+ * Standard error codes (https://www.jsonrpc.org/specification#error_object):
+ *   -32700  Parse error
+ *   -32600  Invalid Request
+ *   -32601  Method not found
+ *   -32602  Invalid params
+ *   -32603  Internal error
+ *   -32000 to -32099  Server error (implementation-defined)
+ */
+export interface RpcErrorPayload {
+  readonly code: number
+  readonly message: string
+  /** Optional additional error information. */
+  readonly data?: unknown
+}
+
+/**
+ * A JSON-RPC 2.0 success response.
+ * result and error are mutually exclusive per the specification.
+ */
+export interface RpcSuccessResponse<TResult = unknown> {
+  readonly jsonrpc: '2.0'
+  /** Matches the id in the corresponding RpcRequest. null if id was unknown. */
+  readonly id: RpcId | null
+  readonly result: TResult
+}
+
+/**
+ * A JSON-RPC 2.0 error response.
+ * result and error are mutually exclusive per the specification.
+ */
+export interface RpcErrorResponse {
+  readonly jsonrpc: '2.0'
+  /** Matches the id in the corresponding RpcRequest. null if id was unknown. */
+  readonly id: RpcId | null
+  readonly error: RpcErrorPayload
+}
+
+/**
+ * Union of success and error response.
+ * Use 'error' in response to discriminate.
+ */
+export type RpcResponse<TResult = unknown> = RpcSuccessResponse<TResult> | RpcErrorResponse
+
+/** A batch JSON-RPC 2.0 request (array of individual requests). */
+export type BatchRpcRequest = ReadonlyArray<RpcRequest>
+
+/** A batch JSON-RPC 2.0 response (array of individual responses). */
+export type BatchRpcResponse = ReadonlyArray<RpcResponse>
+
+// ─── Endpoint Metadata ────────────────────────────────────────────────────────
+
+/**
+ * Static configuration for a single RPC endpoint.
+ *
+ * Used by JsonRpcClient to know where to send requests and how to identify
+ * and prioritise the endpoint for health monitoring and routing.
+ */
+export interface RpcEndpointMetadata {
+  /** Full URL of the RPC endpoint (e.g. 'https://rpc.example.com'). */
+  readonly url: string
+  /** ChainDefinition.id for the chain served by this endpoint. */
+  readonly chainId: string
+  /** Human-readable provider name (e.g. 'Infura', 'Alchemy', 'QoreNode'). */
+  readonly providerName: string
+  /**
+   * Priority rank — lower number = higher priority.
+   * 1 = primary endpoint; 2 = first fallback; 3 = second fallback; etc.
+   */
+  readonly priority: number
+  /** Per-request timeout in milliseconds before AbortController fires. */
+  readonly timeoutMs: number
+  /** Optional geographic region for latency-aware routing (Sprint 4). */
+  readonly region?: string
+  /**
+   * Weight for weighted load balancing (Sprint 4).
+   * 1 = normal weight; 2 = double weight; etc.
+   */
+  readonly weight: number
+}
+
+// ─── Health Metrics ───────────────────────────────────────────────────────────
+
+/**
+ * Internal health statistics tracked by RpcHealthMonitor per endpoint.
+ *
+ * Distinct from RpcHealthReport (the public output of IRpcProvider.healthCheck())
+ * — RpcHealthMetrics is the internal bookkeeping used to build health reports
+ * and inform circuit breaker decisions.
+ */
+export interface RpcHealthMetrics {
+  /**
+   * Round-trip time of the most recent request in milliseconds.
+   * null until the first request completes.
+   */
+  readonly lastResponseTimeMs: number | null
+  /**
+   * Unix timestamp (ms) of the most recently successful request.
+   * null if no request has ever succeeded.
+   */
+  readonly lastSuccessAt: number | null
+  /**
+   * Unix timestamp (ms) of the most recent failed request.
+   * null if no request has ever failed.
+   */
+  readonly lastFailureAt: number | null
+  /**
+   * Number of consecutive failed requests since the last success (or since
+   * monitoring began if there has been no success yet).
+   */
+  readonly consecutiveFailures: number
+  /**
+   * Availability score in the range [0.0, 1.0].
+   * Computed from a rolling window of the most recent requests.
+   * 1.0 = all recent requests succeeded; 0.0 = all recent requests failed.
+   * Returns 1.0 (optimistic) when no requests have been recorded yet.
+   */
+  readonly availabilityScore: number
+}
+
+// ─── Request Metrics ──────────────────────────────────────────────────────────
+
+/**
+ * Aggregated request metrics snapshot for an RPC client or endpoint.
+ *
+ * Captured by RpcMetricsCollector and used for observability dashboards,
+ * alerting thresholds, and automated provider selection in Sprint 4.
+ */
+export interface RpcMetricsSnapshot {
+  /** Total number of requests attempted (including failures and retries). */
+  readonly requestCount: number
+  /** Number of requests that resulted in any error (non-2xx, RPC error, timeout). */
+  readonly failureCount: number
+  /**
+   * Average round-trip latency across all completed requests in milliseconds.
+   * null if no requests have been recorded yet.
+   */
+  readonly averageLatencyMs: number | null
+  /**
+   * Total number of retry attempts (not counting the initial attempt).
+   * Populated when callers invoke recordRequest with retried: true.
+   */
+  readonly retryCount: number
+  /** Number of requests aborted because they exceeded the endpoint timeoutMs. */
+  readonly timeoutCount: number
+}

@@ -215,8 +215,9 @@ describe('DEFAULT_RETRY_CONFIG', () => {
   })
 
   it('maxDelayMs is reachable given initialDelayMs and backoffMultiplier', () => {
-    // 500 * 2^5 = 16000 > 10000 — so cap is meaningful
-    const { initialDelayMs, backoffMultiplier, maxDelayMs } = DEFAULT_RETRY_CONFIG
-    expect(initialDelayMs * backoffMultiplier * backoffMultiplier).toBeLessThan(maxDelayMs * 10)
+    // 500 * 2^5 = 16_000 > 10_000 — cap is reachable
+    expect(DEFAULT_RETRY_CONFIG.maxDelayMs).toBeLessThan(
+      DEFAULT_RETRY_CONFIG.initialDelayMs * Math.pow(DEFAULT_RETRY_CONFIG.backoffMultiplier, 10),
+    )
   })
 })

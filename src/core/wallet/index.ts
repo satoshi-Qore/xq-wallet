@@ -63,8 +63,8 @@ export type {
   TransactionValidationError,
   TransactionValidationField,
 } from '@/domain/transaction'
-// ─── RPC Layer (re-exported for WalletService consumers) ─────────────────────
-// Domain types returned by WalletService RPC methods.
+
+// ─── RPC Layer — domain types (re-exported for WalletService consumers) ──────
 export type {
   RpcBlock,
   RpcTransaction,
@@ -75,8 +75,22 @@ export type {
   RetryConfig,
   CircuitBreakerState,
   CircuitBreakerConfig,
+  // JSON-RPC 2.0 wire format (Day 11)
+  RpcId,
+  RpcRequest,
+  RpcErrorPayload,
+  RpcSuccessResponse,
+  RpcErrorResponse,
+  RpcResponse,
+  BatchRpcRequest,
+  BatchRpcResponse,
+  // Endpoint & observability (Day 11)
+  RpcEndpointMetadata,
+  RpcHealthMetrics,
+  RpcMetricsSnapshot,
 } from '@/domain/rpc'
-// RPC infrastructure types for advanced consumers (e.g., Sprint 3 provider injection).
+
+// ─── RPC Layer — infrastructure (re-exported for advanced consumers) ──────────
 export type { IRpcProvider } from '@/core/rpc/IRpcProvider'
 export { NullRpcProvider } from '@/core/rpc/NullRpcProvider'
 export { RpcProviderRegistry } from '@/core/rpc/RpcProviderRegistry'
@@ -84,3 +98,28 @@ export type { IRetryStrategy } from '@/core/rpc/RetryStrategy'
 export { ExponentialBackoffRetry, DEFAULT_RETRY_CONFIG } from '@/core/rpc/RetryStrategy'
 export type { ICircuitBreaker } from '@/core/rpc/CircuitBreaker'
 export { CircuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from '@/core/rpc/CircuitBreaker'
+// Transport layer (Day 11)
+export type { FetchFn, BatchEntry } from '@/core/rpc/JsonRpcClient'
+export { JsonRpcClient, JSON_RPC_ERROR_CODES } from '@/core/rpc/JsonRpcClient'
+export { JsonRpcClientRegistry } from '@/core/rpc/JsonRpcClientRegistry'
+export { RpcHealthMonitor } from '@/core/rpc/RpcHealthMonitor'
+export type { RecordRequestOptions } from '@/core/rpc/RpcMetricsCollector'
+export { RpcMetricsCollector } from '@/core/rpc/RpcMetricsCollector'
+// Provider interfaces (Day 11)
+export type {
+  IEvmRpcProvider,
+  EvmFeeHistory,
+  EvmBlock,
+  EvmTransactionReceipt,
+  EvmLog,
+} from '@/core/rpc/providers/evm'
+export type {
+  ISolanaRpcProvider,
+  SolanaCommitment,
+  SolanaAccountData,
+  SolanaAccountInfo,
+  SolanaBlockhashResult,
+  SolanaSignatureStatus,
+  SolanaBlock,
+} from '@/core/rpc/providers/solana'
+export type { IQoreRpcProvider, QoreBlock } from '@/core/rpc/providers/qore'

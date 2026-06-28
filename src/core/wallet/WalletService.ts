@@ -53,6 +53,8 @@ import { NullRpcProvider } from '@/core/rpc/NullRpcProvider'
 import { RpcProviderRegistry } from '@/core/rpc/RpcProviderRegistry'
 import type { IRpcProvider } from '@/core/rpc/IRpcProvider'
 import type { RpcBlock, RpcTransaction, RpcHealthReport } from '@/domain/rpc'
+import { JsonRpcClientRegistry } from '@/core/rpc/JsonRpcClientRegistry'
+import type { JsonRpcClient } from '@/core/rpc/JsonRpcClient'
 import type {
   TransactionRequest,
   FeeEstimate,
@@ -127,6 +129,15 @@ export interface WalletServiceOptions {
    * to enable live RPC without changing any calling code.
    */
   readonly rpcRegistry?: RpcProviderRegistry
+
+  /**
+   * JSON-RPC client registry for transport-layer access.
+   * Defaults to an empty registry.
+   *
+   * Sprint 3: register a JsonRpcClient per chain via this registry so
+   * concrete RPC providers can call real blockchain nodes.
+   */
+  readonly jsonRpcClientRegistry?: JsonRpcClientRegistry
 }
 
 export interface CreateWalletOptions {
@@ -197,6 +208,9 @@ export class WalletService {
   /** RPC provider registry. Injected via constructor; defaults to NullRpcProvider for all chains. */
   private readonly rpcRegistry: RpcProviderRegistry
 
+  /** JSON-RPC client registry. Injected via constructor; defaults to empty registry. */
+  private readonly jsonRpcClientRegistry: JsonRpcClientRegistry
+
   /** In-memory encrypted vault. null until createWallet / importWallet. */
   private encryptedVault: EncryptedVault | null = null
 
@@ -217,6 +231,7 @@ export class WalletService {
     this.balanceProvider = options.balanceProvider ?? new MockBalanceProvider()
     this.feeEstimator = options.feeEstimator ?? new MockFeeEstimator()
     this.rpcRegistry = options.rpcRegistry ?? createDefaultRpcRegistry()
+    this.jsonRpcClientRegistry = options.jsonRpcClientRegistry ?? new JsonRpcClientRegistry()
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -775,6 +790,42 @@ export class WalletService {
       )
     }
     return provider
+  }
+
+  // ─── JSON-RPC Client Methods ──────────────────────────────────────────────
+
+  /**
+   * Retrieve the JSON-RPC transport client for the given chainId.
+   *
+   * Returns undefined if no client has been registered for that chain.
+   * Sprint 3: concrete provider implementations will call this to send
+   * JSON-RPC requests without going through the IRpcProvider abstraction.
+   *
+   * Architecture: ARCHITECTURE.md §5.7 — WalletService JSON-RPC Integration
+   */
+  getJsonRpcClient(chainId: string): JsonRpcClient | undefined {
+    return this.jsonRpcClientRegistry.get(chainId)
+  }
+
+  /**
+   * Register a JSON-RPC client for the given chain.
+   *
+   * Delegates to JsonRpcClientRegistry.register() — throws
+   * WalletError('UNSUPPORTED_CHAIN') if a client for that chain is already
+   * registered. Use replaceJsonRpcClient() for upsert semantics.
+   *
+   * Sprint 3: called during provider initialisation to wire up live RPC.
+   */
+  registerJsonRpcClient(client: JsonRpcClient): void {
+    this.jsonRpcClientRegistry.register(client)
+  }
+
+  /**
+   * Replace (or register) the JSON-RPC client for a chain (upsert).
+   * Never throws — use when idempotent registration is needed.
+   */
+  replaceJsonRpcClient(client: JsonRpcClient): void {
+    this.jsonRpcClientRegistry.replace(client)
   }
 
   private async _initWallet(

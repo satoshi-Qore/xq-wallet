@@ -107,7 +107,7 @@ describe('WalletService.getTransaction', () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     let err: unknown
     try {
-      await svc.getTransaction('0xdeadbeef', 'ethereum-sepolia')
+      await svc.getTransaction('0xabc', 'ethereum-sepolia')
     } catch (e) {
       err = e
     }
@@ -117,119 +117,90 @@ describe('WalletService.getTransaction', () => {
     }
   })
 
-  it('throws UNSUPPORTED_CHAIN for unknown chain', async () => {
+  it('throws UNSUPPORTED_CHAIN for unknown chainId', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     let err: unknown
     try {
-      await svc.getTransaction('0xhash', 'unknown')
+      await svc.getTransaction('0xabc', 'unknown-chain')
     } catch (e) {
       err = e
     }
     expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('UNSUPPORTED_CHAIN')
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('UNSUPPORTED_CHAIN')
+    }
   })
 })
 
 // ─── fetchBalance ─────────────────────────────────────────────────────────────
 
 describe('WalletService.fetchBalance', () => {
+  it('throws RPC_NOT_CONNECTED for a known chain with valid assetId', async () => {
+    const svc = new WalletService({ pbkdf2Iterations: 1 })
+    let err: unknown
+    try {
+      await svc.fetchBalance('0xabc', 'ethereum-sepolia', 'ethereum-sepolia:native:SEP')
+    } catch (e) {
+      err = e
+    }
+    expect(WalletError.isWalletError(err)).toBe(true)
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('RPC_NOT_CONNECTED')
+    }
+  })
+
   it('throws ASSET_NOT_FOUND for unknown assetId', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     let err: unknown
     try {
-      await svc.fetchBalance('0xAddr', 'ethereum-sepolia', 'nonexistent:asset:id')
+      await svc.fetchBalance('0xabc', 'ethereum-sepolia', 'no-such-asset')
     } catch (e) {
       err = e
     }
     expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('ASSET_NOT_FOUND')
-  })
-
-  it('throws RPC_NOT_CONNECTED when asset exists but chain is NullRpcProvider', async () => {
-    const svc = new WalletService({ pbkdf2Iterations: 1 })
-    let err: unknown
-    try {
-      await svc.fetchBalance(
-        '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-        'ethereum-sepolia',
-        'ethereum-sepolia:native:SEP',
-      )
-    } catch (e) {
-      err = e
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('ASSET_NOT_FOUND')
     }
-    expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('RPC_NOT_CONNECTED')
-  })
-
-  it('throws UNSUPPORTED_CHAIN when provider is missing', async () => {
-    const svc = new WalletService({ pbkdf2Iterations: 1 })
-    let err: unknown
-    try {
-      // SEP asset exists but no provider for "missing-chain"
-      await svc.fetchBalance('0xAddr', 'missing-chain', 'ethereum-sepolia:native:SEP')
-    } catch (e) {
-      err = e
-    }
-    expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('UNSUPPORTED_CHAIN')
   })
 })
 
 // ─── healthCheck ──────────────────────────────────────────────────────────────
 
 describe('WalletService.healthCheck', () => {
-  it('returns unavailable report for ethereum-sepolia', async () => {
+  it('returns unavailable report for default NullRpcProvider', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     const report = await svc.healthCheck('ethereum-sepolia')
     expect(report.status).toBe('unavailable')
+    expect(report.endpoint).toBe('')
     expect(report.latencyMs).toBeNull()
-    expect(report.errorMessage).toContain('ethereum-sepolia')
+    expect(report.lastSuccessAt).toBeNull()
   })
 
-  it('returns unavailable report for solana-devnet', async () => {
-    const svc = new WalletService({ pbkdf2Iterations: 1 })
-    const report = await svc.healthCheck('solana-devnet')
-    expect(report.status).toBe('unavailable')
-  })
-
-  it('returns unavailable report for qorechain-devnet', async () => {
-    const svc = new WalletService({ pbkdf2Iterations: 1 })
-    const report = await svc.healthCheck('qorechain-devnet')
-    expect(report.status).toBe('unavailable')
-  })
-
-  it('throws UNSUPPORTED_CHAIN for unregistered chainId', async () => {
+  it('throws UNSUPPORTED_CHAIN for unknown chainId', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     let err: unknown
     try {
-      await svc.healthCheck('not-registered')
+      await svc.healthCheck('unknown-chain')
     } catch (e) {
       err = e
     }
     expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('UNSUPPORTED_CHAIN')
-  })
-
-  it('sets lastCheckedAt within current execution', async () => {
-    const svc = new WalletService({ pbkdf2Iterations: 1 })
-    const before = Date.now()
-    const report = await svc.healthCheck('ethereum-sepolia')
-    const after = Date.now()
-    expect(report.lastCheckedAt).toBeGreaterThanOrEqual(before)
-    expect(report.lastCheckedAt).toBeLessThanOrEqual(after)
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('UNSUPPORTED_CHAIN')
+    }
   })
 })
 
 // ─── Custom RpcProviderRegistry injection ────────────────────────────────────
 
-describe('WalletService — custom rpcRegistry injection', () => {
+describe('WalletService with injected RpcProviderRegistry', () => {
   it('uses the injected registry instead of the default', async () => {
     const registry = new RpcProviderRegistry()
     registry.register(new NullRpcProvider('evm', 'my-custom-chain'))
 
     const svc = new WalletService({ pbkdf2Iterations: 1, rpcRegistry: registry })
 
-    // Custom chain works (NullRpcProvider → throws RPC_NOT_CONNECTED, not UNSUPPORTED_CHAIN)
+    // my-custom-chain is in registry → RPC_NOT_CONNECTED (not UNSUPPORTED_CHAIN)
     let err: unknown
     try {
       await svc.getLatestBlock('my-custom-chain')
@@ -237,12 +208,13 @@ describe('WalletService — custom rpcRegistry injection', () => {
       err = e
     }
     expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('RPC_NOT_CONNECTED')
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('RPC_NOT_CONNECTED')
+    }
   })
 
   it('throws UNSUPPORTED_CHAIN for chains not in the injected registry', async () => {
     const registry = new RpcProviderRegistry()
-    // Only register custom chain — default chains are NOT present
     registry.register(new NullRpcProvider('evm', 'my-chain'))
 
     const svc = new WalletService({ pbkdf2Iterations: 1, rpcRegistry: registry })

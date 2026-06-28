@@ -76,4 +76,17 @@ export type {
   RetryConfig,
   CircuitBreakerState,
   CircuitBreakerConfig,
+  // JSON-RPC 2.0 wire format (Day 11)
+  RpcId,
+  RpcRequest,
+  RpcErrorPayload,
+  RpcSuccessResponse,
+  RpcErrorResponse,
+  RpcResponse,
+  BatchRpcRequest,
+  BatchRpcResponse,
+  // Endpoint & observability (Day 11)
+  RpcEndpointMetadata,
+  RpcHealthMetrics,
+  RpcMetricsSnapshot,
 } from './rpc'
