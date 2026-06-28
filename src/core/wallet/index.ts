@@ -45,3 +45,21 @@ export type { SignResult, VerifyParams } from '@/core/chain/adapters'
 // ─── Asset Layer (re-exported for WalletService consumers) ─────────────────
 // Types returned by WalletService.getAsset / listAssets / getBalance / getPortfolio.
 export type { AnyAsset, Balance, Portfolio, PortfolioEntry } from '@/domain/asset'
+
+// ─── Transaction Layer (re-exported for WalletService consumers) ─────────────
+// Types accepted/returned by WalletService transaction methods.
+export type { CreateTransactionParams } from './WalletService'
+export type {
+  TransactionRequest,
+  TransactionType,
+  TransactionStatus,
+  SigningPayload,
+  SigningAlgorithm,
+  SignedTransaction,
+  FeePriority,
+  Fee,
+  FeeEstimate,
+  TransactionValidationResult,
+  TransactionValidationError,
+  TransactionValidationField,
+} from '@/domain/transaction'

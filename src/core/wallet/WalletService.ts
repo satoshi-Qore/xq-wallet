@@ -45,6 +45,18 @@ import { AssetRegistry } from '@/core/asset/AssetRegistry'
 import type { IBalanceProvider } from '@/core/asset/IBalanceProvider'
 import { MockBalanceProvider } from '@/core/asset/MockBalanceProvider'
 import { createDefaultAssetRegistry } from '@/core/asset/defaultAssets'
+import { TransactionBuilder } from '@/core/transaction/TransactionBuilder'
+import { TransactionValidator } from '@/core/transaction/TransactionValidator'
+import { MockFeeEstimator } from '@/core/transaction/MockFeeEstimator'
+import type { IFeeEstimator } from '@/core/transaction/IFeeEstimator'
+import type {
+  TransactionRequest,
+  FeeEstimate,
+  SigningPayload,
+  SigningAlgorithm,
+  TransactionValidationResult,
+  TransactionType,
+} from '@/domain/transaction'
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -92,6 +104,14 @@ export interface WalletServiceOptions {
    * SolanaBalanceProvider, NativeBalanceProvider) to switch from mock data.
    */
   readonly balanceProvider?: IBalanceProvider
+
+  /**
+   * Fee estimator for on-chain transaction fee queries.
+   * Defaults to `MockFeeEstimator` (deterministic hard-coded values).
+   *
+   * Sprint 3: inject an RPC-backed estimator to get live fee data.
+   */
+  readonly feeEstimator?: IFeeEstimator
 }
 
 export interface CreateWalletOptions {
@@ -125,6 +145,26 @@ export interface CreateWalletResult {
   readonly mnemonic: string
 }
 
+/** Parameters for WalletService.createTransaction(). */
+export interface CreateTransactionParams {
+  /** Transaction category. Defaults to 'transfer'. */
+  readonly type?: TransactionType
+  /** Target virtual machine. */
+  readonly vm: VMType
+  /** Target chain id (must match a registered ChainDefinition.id). */
+  readonly chainId: string
+  /** Asset to transfer (must be registered in the AssetRegistry). */
+  readonly assetId: string
+  /** Sender address — must be valid for the given VM. */
+  readonly from: string
+  /** Recipient address — must be valid for the given VM. */
+  readonly to: string
+  /** Transfer amount in the asset's smallest indivisible unit. Must be > 0. */
+  readonly amount: bigint
+  /** Optional human-readable note. */
+  readonly memo?: string
+}
+
 // ─── WalletService ─────────────────────────────────────────────────────────
 
 export class WalletService {
@@ -135,6 +175,9 @@ export class WalletService {
 
   /** Balance provider. Injected via constructor; defaults to MockBalanceProvider. */
   private readonly balanceProvider: IBalanceProvider
+
+  /** Fee estimator. Injected via constructor; defaults to MockFeeEstimator. */
+  private readonly feeEstimator: IFeeEstimator
 
   /** In-memory encrypted vault. null until createWallet / importWallet. */
   private encryptedVault: EncryptedVault | null = null
@@ -154,6 +197,7 @@ export class WalletService {
     this.pbkdf2Iterations = options.pbkdf2Iterations ?? DEFAULT_PBKDF2_ITERATIONS
     this.assetRegistry = options.assetRegistry ?? createDefaultAssetRegistry()
     this.balanceProvider = options.balanceProvider ?? new MockBalanceProvider()
+    this.feeEstimator = options.feeEstimator ?? new MockFeeEstimator()
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -442,6 +486,139 @@ export class WalletService {
       entries,
       totalAssets: entries.length,
       updatedAt: Date.now(),
+    }
+  }
+
+  // ─── Transaction Layer ───────────────────────────────────────────────────
+
+  /**
+   * Constructs and validates a TransactionRequest from the given parameters.
+   *
+   * Validates VM, chain, asset, addresses, and amount before returning.
+   * Does not require the wallet to be unlocked — no key material is accessed.
+   *
+   * For collecting multiple validation errors at once, call
+   * validateTransaction() after createTransaction().
+   *
+   * @param params - All required transaction fields.
+   * @returns A sealed, validated TransactionRequest with a generated id.
+   * @throws WalletError('UNSUPPORTED_VM')   — vm is not a known VMType.
+   * @throws WalletError('UNSUPPORTED_CHAIN') — chainId is not provided.
+   * @throws WalletError('ASSET_NOT_FOUND')  — assetId is not provided.
+   * @throws WalletError('INVALID_ADDRESS')  — from or to is missing or invalid for the VM.
+   * @throws WalletError('INVALID_AMOUNT')   — amount is zero or negative.
+   */
+  createTransaction(params: CreateTransactionParams): TransactionRequest {
+    const builder = TransactionBuilder.create()
+      .vm(params.vm)
+      .chain(params.chainId)
+      .asset(params.assetId)
+      .from(params.from)
+      .to(params.to)
+      .amount(params.amount)
+
+    const withType = params.type !== undefined ? builder.type(params.type) : builder
+    const withMemo = params.memo !== undefined ? withType.memo(params.memo) : withType
+
+    // Validate addresses using chain adapters before calling build()
+    const fromError = TransactionValidator.validateFrom(params.from, params.vm)
+    if (fromError !== null) {
+      throw new WalletError(fromError.code, fromError.message)
+    }
+    const toError = TransactionValidator.validateTo(params.to, params.vm)
+    if (toError !== null) {
+      throw new WalletError(toError.code, toError.message)
+    }
+
+    return withMemo.build()
+  }
+
+  /**
+   * Estimates transaction fees for all three priority tiers.
+   *
+   * Sprint 2: delegates to MockFeeEstimator (deterministic values).
+   * Sprint 3: inject a real RPC-backed IFeeEstimator via WalletServiceOptions.
+   *
+   * Does not require the wallet to be unlocked.
+   *
+   * @param request - Transaction to estimate fees for.
+   * @returns FeeEstimate with slow, normal, and fast priority tiers.
+   */
+  async estimateFee(request: TransactionRequest): Promise<FeeEstimate> {
+    return this.feeEstimator.estimate(request)
+  }
+
+  /**
+   * Validates a TransactionRequest and returns all errors found.
+   *
+   * Unlike createTransaction() which throws on first failure, this method
+   * runs all validations and collects every error so the UI can highlight
+   * all problems at once.
+   *
+   * Optionally accepts a Balance snapshot to validate balance sufficiency.
+   * Does not require the wallet to be unlocked.
+   *
+   * @param request - TransactionRequest to validate.
+   * @param balance - Optional balance snapshot for sufficiency check.
+   * @returns TransactionValidationResult with valid flag and errors array.
+   */
+  validateTransaction(
+    request: TransactionRequest,
+    balance?: import('@/domain/asset').Balance,
+  ): TransactionValidationResult {
+    return TransactionValidator.validate(request, balance)
+  }
+
+  /**
+   * Builds a SigningPayload from the given transaction request.
+   *
+   * Sprint 2: encodes the transaction as canonical JSON bytes (deterministic,
+   * alphabetically-sorted fields; bigint serialised as decimal string).
+   *
+   * Sprint 3: this method will produce the real VM-specific binary encoding:
+   *   EVM    — RLP-encoded EIP-2718 typed transaction envelope
+   *   SVM    — Solana Transaction / VersionedTransaction serialisation
+   *   Native — QoreChain SDK transaction serialisation (TBD)
+   *
+   * Does not require the wallet to be unlocked — only public request data is used.
+   *
+   * @param request      - The transaction request to prepare for signing.
+   * @param accountIndex - BIP-44 account index of the signing key.
+   * @returns A SigningPayload ready to be passed to ITransactionSigner.sign().
+   */
+  prepareSigningPayload(request: TransactionRequest, accountIndex: number): SigningPayload {
+    const algorithm: SigningAlgorithm = request.vm === 'svm' ? 'ed25519' : 'secp256k1-keccak256'
+
+    // Canonical encoding: sorted keys, bigint as decimal string.
+    // Sprint 3: replace with proper VM-specific binary serialisation.
+    const canonical: Record<string, string | number | null> = {
+      amount: request.amount.toString(),
+      assetId: request.assetId,
+      chainId: request.chainId,
+      createdAt: request.createdAt,
+      from: request.from,
+      id: request.id,
+      memo: request.memo ?? null,
+      to: request.to,
+      type: request.type,
+      vm: request.vm,
+    }
+
+    // Sort keys for determinism (JSON.stringify does not guarantee key order)
+    const sorted: Record<string, string | number | null> = {}
+    for (const key of Object.keys(canonical).sort()) {
+      sorted[key] = canonical[key] ?? null
+    }
+
+    const payload = new TextEncoder().encode(JSON.stringify(sorted))
+
+    return {
+      transactionId: request.id,
+      payload,
+      algorithm,
+      accountIndex,
+      vm: request.vm,
+      chainId: request.chainId,
     }
   }
 

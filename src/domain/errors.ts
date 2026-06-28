@@ -71,6 +71,12 @@ export type WalletErrorCode =
   /** Address failed isValidAddress() for the specified VM */
   | 'INVALID_ADDRESS'
 
+  // ── Transaction ──────────────────────────────────────────────────────────
+  /** Transaction amount is zero, negative, or not provided */
+  | 'INVALID_AMOUNT'
+  /** Account balance is insufficient to cover the requested amount */
+  | 'INSUFFICIENT_BALANCE'
+
   // ── Storage ──────────────────────────────────────────────────────────────
   /** IndexedDB or other storage backend is unavailable */
   | 'STORAGE_UNAVAILABLE'

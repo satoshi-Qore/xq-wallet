@@ -48,3 +48,19 @@ export type {
   Portfolio,
 } from './asset'
 export { isNativeAsset, isTokenAsset, isNFTAsset } from './asset'
+
+// Transaction
+export type {
+  TransactionType,
+  TransactionStatus,
+  TransactionRequest,
+  SigningAlgorithm,
+  SigningPayload,
+  SignedTransaction,
+  FeePriority,
+  Fee,
+  FeeEstimate,
+  TransactionValidationField,
+  TransactionValidationError,
+  TransactionValidationResult,
+} from './transaction'
