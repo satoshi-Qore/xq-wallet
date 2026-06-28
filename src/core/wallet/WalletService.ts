@@ -1,14 +1,16 @@
 /**
- * WalletService.ts — In-memory wallet engine.
+ * WalletService.ts — Wallet engine with optional persistence.
  *
  * Wires together all three lower layers:
  *   Day 1 — domain types (WalletMetadata, AccountMetadata, EncryptedVault, …)
  *   Day 2 — crypto layer (mnemonic generation/validation, seed derivation)
  *   Day 3 — derivation layer (deriveAllAccounts, address adapters)
+ *   Day 15 — persistence layer (IVaultPersistenceService / IndexedDB)
  *
- * Sprint 2 scope: no persistence (IndexedDB / StorageAdapter) — everything
- * lives in memory. Persistence will be added in Sprint 3 via a separate
- * StorageAdapter layer that this service will accept as a constructor argument.
+ * Persistence is opt-in via WalletServiceOptions.persistenceService.
+ * The default is NoOpVaultPersistenceService: createWallet() and importWallet()
+ * continue to work as pure in-memory operations (backward-compatible).
+ * Inject VaultPersistenceService + IndexedDBVaultAdapter for real storage.
  *
  * Lock model:
  *   LOCKED   — EncryptedVault is in memory; mnemonic is not.
@@ -33,6 +35,9 @@ import { assertReleaseCapability } from '@/config/releasePolicy'
 import type { WalletMetadata, AccountMetadata, WordCount } from '@/domain/wallet'
 import type { EncryptedVault, VaultPayload, PBKDF2Params } from '@/domain/vault'
 import type { AnyAsset, Balance, Portfolio, PortfolioEntry } from '@/domain/asset'
+import type { WalletListEntry, VerificationResult, CreateVaultParams } from '@/domain/storage'
+import type { IVaultPersistenceService } from '@/core/persistence/IVaultPersistenceService'
+import { NoOpVaultPersistenceService } from '@/core/persistence/NoOpVaultPersistenceService'
 import { generate, assertValidMnemonic } from '@/core/crypto'
 import {
   deriveAllAccounts,
@@ -139,6 +144,20 @@ export interface WalletServiceOptions {
    * concrete RPC providers can call real blockchain nodes.
    */
   readonly jsonRpcClientRegistry?: JsonRpcClientRegistry
+
+  /**
+   * Vault persistence service for durable wallet storage.
+   *
+   * Default: NoOpVaultPersistenceService — wallets live in memory only
+   * (backward-compatible with all existing tests that omit this option).
+   *
+   * Production: inject VaultPersistenceService + IndexedDBVaultAdapter to
+   * persist vaults in IndexedDB so wallets survive page reloads and app restarts.
+   *
+   * Use NullVaultPersistenceService when you need persistence calls to fail
+   * loudly rather than silently (e.g. during onboarding gating checks).
+   */
+  readonly persistenceService?: IVaultPersistenceService
 }
 
 export interface CreateWalletOptions {
@@ -212,7 +231,14 @@ export class WalletService {
   /** JSON-RPC client registry. Injected via constructor; defaults to empty registry. */
   private readonly jsonRpcClientRegistry: JsonRpcClientRegistry
 
-  /** In-memory encrypted vault. null until createWallet / importWallet. */
+  /**
+   * Persistence service — coordinates IDB reads/writes.
+   * Defaults to NoOpVaultPersistenceService (silent no-op; wallets live in memory only).
+   * Inject VaultPersistenceService for real storage.
+   */
+  private readonly persistenceService: IVaultPersistenceService
+
+  /** In-memory encrypted vault. null until createWallet / importWallet / openWallet. */
   private encryptedVault: EncryptedVault | null = null
 
   /** Public wallet metadata. null until createWallet / importWallet. */
@@ -233,6 +259,7 @@ export class WalletService {
     this.feeEstimator = options.feeEstimator ?? new MockFeeEstimator()
     this.rpcRegistry = options.rpcRegistry ?? createDefaultRpcRegistry()
     this.jsonRpcClientRegistry = options.jsonRpcClientRegistry ?? new JsonRpcClientRegistry()
+    this.persistenceService = options.persistenceService ?? new NoOpVaultPersistenceService()
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -323,6 +350,168 @@ export class WalletService {
    */
   lockWallet(): void {
     this.sessionMnemonic = null
+  }
+
+  // ─── Persistence ──────────────────────────────────────────────────────────
+
+  /**
+   * Restores a wallet from persistent storage by loading and decrypting it.
+   *
+   * This is the "app restart" path: the user selects a stored wallet, provides
+   * their password, and the service re-establishes an unlocked session.
+   *
+   * P0.3 scope: only the first account (index 0) is re-derived. Users who had
+   * derived additional accounts must call deriveNextAccount() to restore them.
+   *
+   * @param walletId - UUID of the stored wallet (from listWallets()).
+   * @param password - Vault decryption password.
+   * @throws WalletError('VAULT_NOT_FOUND')    — walletId not in storage.
+   * @throws WalletError('VAULT_CORRUPTED')    — stored record integrity check failed.
+   * @throws WalletError('INCORRECT_PASSWORD') — password wrong.
+   * @throws WalletError('STORAGE_UNAVAILABLE') — IDB inaccessible.
+   */
+  async openWallet(walletId: string, password: string): Promise<void> {
+    // Load the encrypted vault from persistent storage.
+    const encryptedVault = await this.persistenceService.loadWallet(walletId)
+
+    // Decrypt — throws INCORRECT_PASSWORD on AES-GCM authentication failure.
+    const payload = await decryptVault(encryptedVault, password)
+
+    // Recover word count from the mnemonic itself.
+    const wordCount = payload.mnemonic.trim().split(/\s+/).length as WordCount
+
+    // Re-derive account 0 (P0.3 scope).
+    const firstAccount = await deriveAllAccounts(payload.mnemonic, 0, {
+      ...DEFAULT_DERIVE_OPTIONS,
+      accountName: 'Account 1',
+    })
+
+    // Best-effort: fetch the wallet's display name from the stored listing.
+    let walletName = walletId
+    try {
+      const entries = await this.persistenceService.listWallets()
+      const entry = entries.find((e) => e.walletId === walletId)
+      if (entry !== undefined) walletName = entry.displayName
+    } catch {
+      // Non-fatal — fall back to walletId as the display name.
+    }
+
+    // Establish in-memory state and session.
+    this.encryptedVault = encryptedVault
+    this.walletMetadata = {
+      id: walletId,
+      name: walletName,
+      wordCount,
+      accounts: [firstAccount],
+      activeAccountId: firstAccount.id,
+      createdAt: encryptedVault.createdAt,
+      lastUnlockedAt: Date.now(),
+      version: WALLET_SCHEMA_VERSION,
+    }
+    this.sessionMnemonic = payload.mnemonic
+  }
+
+  /**
+   * Deletes a wallet from persistent storage and clears in-memory state
+   * if the deleted wallet is the one currently loaded.
+   *
+   * @param walletId - UUID of the wallet to delete. Defaults to the current wallet.
+   * @throws WalletError('VAULT_NOT_FOUND')    — walletId not found in storage (or no wallet loaded).
+   * @throws WalletError('STORAGE_UNAVAILABLE') — IDB inaccessible.
+   */
+  async deleteWallet(walletId?: string): Promise<void> {
+    const id = walletId ?? this.walletMetadata?.id
+    if (id === undefined) {
+      throw new WalletError(
+        'VAULT_NOT_FOUND',
+        'No wallet ID provided and no wallet is currently loaded.',
+      )
+    }
+
+    await this.persistenceService.deleteWallet(id)
+
+    // Clear in-memory state when the deleted wallet is the current wallet.
+    if (id === this.walletMetadata?.id) {
+      this.encryptedVault = null
+      this.walletMetadata = null
+      this.sessionMnemonic = null
+    }
+  }
+
+  /**
+   * Re-encrypts the current wallet with a new password and atomically
+   * updates the stored record via the persistence service.
+   *
+   * The original createdAt timestamp is preserved; updatedAt is refreshed.
+   *
+   * @param oldPassword - Current vault decryption password.
+   * @param newPassword - Replacement password (minimum 8 characters).
+   * @throws WalletError('VAULT_NOT_FOUND')    — no wallet loaded.
+   * @throws WalletError('WEAK_PASSWORD')      — newPassword too short.
+   * @throws WalletError('INCORRECT_PASSWORD') — oldPassword wrong.
+   * @throws WalletError('VAULT_CORRUPTED')    — post-rotation integrity check failed.
+   * @throws WalletError('STORAGE_UNAVAILABLE') — IDB inaccessible.
+   */
+  async rotatePassword(oldPassword: string, newPassword: string): Promise<void> {
+    assertValidPassword(newPassword)
+
+    if (!this.encryptedVault || !this.walletMetadata) {
+      throw new WalletError('VAULT_NOT_FOUND', 'No wallet found. Create or import a wallet first.')
+    }
+
+    const walletId = this.walletMetadata.id
+    const originalCreatedAt = this.encryptedVault.createdAt
+
+    // Decrypt with old password — throws INCORRECT_PASSWORD on failure.
+    const payload = await decryptVault(this.encryptedVault, oldPassword)
+
+    // Re-encrypt with new password, preserving the original createdAt timestamp.
+    const newEncryptedVault = await encryptVault(
+      payload,
+      newPassword,
+      this.pbkdf2Iterations,
+      walletId,
+      Date.now(),
+      originalCreatedAt,
+    )
+
+    // Atomically update the stored record; throws on integrity failure.
+    await this.persistenceService.rotatePassword(walletId, newEncryptedVault)
+
+    // Update in-memory state.
+    this.encryptedVault = newEncryptedVault
+  }
+
+  /**
+   * Returns public metadata for all wallets currently in persistent storage.
+   *
+   * Never returns ciphertext or key material. Safe to call without a password.
+   *
+   * @returns Array of WalletListEntry sorted by createdAt ascending.
+   * @throws WalletError('STORAGE_UNAVAILABLE') — IDB inaccessible.
+   */
+  async listWallets(): Promise<WalletListEntry[]> {
+    return this.persistenceService.listWallets()
+  }
+
+  /**
+   * Verifies the HMAC integrity of a stored vault record without decrypting it.
+   *
+   * Useful for health-check dashboards and pre-unlock integrity checks.
+   *
+   * @param walletId - UUID to verify. Defaults to the currently loaded wallet.
+   * @returns VerificationResult — always resolves, never rejects.
+   * @throws WalletError('VAULT_NOT_FOUND') — no walletId provided and no wallet loaded.
+   */
+  async verifyWalletIntegrity(walletId?: string): Promise<VerificationResult> {
+    const id = walletId ?? this.walletMetadata?.id
+    if (id === undefined) {
+      throw new WalletError(
+        'VAULT_NOT_FOUND',
+        'No wallet ID provided and no wallet is currently loaded.',
+      )
+    }
+    return this.persistenceService.verifyIntegrity(id)
   }
 
   // ─── Accounts ─────────────────────────────────────────────────────────────
@@ -846,14 +1035,24 @@ export class WalletService {
       accountName: 'Account 1',
     })
 
-    // Encrypt and store the vault in memory.
-    this.encryptedVault = await encryptVault(
+    // Encrypt vault (local variable — not yet committed to memory).
+    const encryptedVault = await encryptVault(
       { version: 1, mnemonic },
       password,
       this.pbkdf2Iterations,
       walletId,
       now,
     )
+
+    // Persist before updating in-memory state (fail-closed).
+    // With NoOpVaultPersistenceService (default), this silently succeeds.
+    // With a real persistence service, a storage failure here prevents
+    // in-memory state from being set, keeping the service in a clean state.
+    const createParams: CreateVaultParams = { displayName: walletName, vm: 'evm' }
+    await this.persistenceService.createWallet(walletId, encryptedVault, createParams)
+
+    // Only update in-memory state after successful persist.
+    this.encryptedVault = encryptedVault
 
     // Build wallet metadata (public; no secrets).
     this.walletMetadata = {
@@ -946,6 +1145,7 @@ async function encryptVault(
   iterations: number,
   walletId: string,
   now: number,
+  originalCreatedAt?: number,
 ): Promise<EncryptedVault> {
   const salt = globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)))
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)))
@@ -975,7 +1175,8 @@ async function encryptVault(
       kdf: 'PBKDF2',
       kdfParams,
     },
-    createdAt: now,
+    // When rotating passwords, preserve the original createdAt timestamp.
+    createdAt: originalCreatedAt ?? now,
     updatedAt: now,
   }
 }

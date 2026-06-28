@@ -90,6 +90,12 @@ export type {
   RpcMetricsSnapshot,
 } from '@/domain/rpc'
 
+// ─── Persistence Layer (re-exported for WalletService consumers) ──────────────
+// Types returned by WalletService.listWallets() and WalletService.verifyWalletIntegrity().
+export type { WalletListEntry, VerificationResult, CreateVaultParams } from '@/domain/storage'
+export type { IVaultPersistenceService } from '@/core/persistence/IVaultPersistenceService'
+export { NoOpVaultPersistenceService } from '@/core/persistence/NoOpVaultPersistenceService'
+
 // ─── RPC Layer — infrastructure (re-exported for advanced consumers) ──────────
 export type { IRpcProvider } from '@/core/rpc/IRpcProvider'
 export { NullRpcProvider } from '@/core/rpc/NullRpcProvider'

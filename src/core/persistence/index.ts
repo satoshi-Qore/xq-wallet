@@ -12,3 +12,4 @@
 
 export type { IVaultStorageAdapter } from './IVaultStorageAdapter'
 export type { IVaultPersistenceService } from './IVaultPersistenceService'
+export { NoOpVaultPersistenceService } from './NoOpVaultPersistenceService'
