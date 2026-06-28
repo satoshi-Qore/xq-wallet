@@ -10,3 +10,5 @@
 export { IndexedDBVaultAdapter } from './IndexedDBVaultAdapter'
 export { VaultIntegrityChecker } from './VaultIntegrityChecker'
 export { SchemaMigrationRunner, STORE_VAULTS, STORE_META } from './SchemaMigrationRunner'
+export { VaultPersistenceService } from './VaultPersistenceService'
+export { NullVaultPersistenceService } from './NullVaultPersistenceService'
