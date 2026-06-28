@@ -555,85 +555,14 @@ describe('validateAddress()', () => {
 // ─── signMessage() ────────────────────────────────────────────────────────────
 
 describe('signMessage()', () => {
-  let svc: WalletService
   const message = new TextEncoder().encode('test message for signing')
 
-  beforeEach(async () => {
-    svc = new WalletService({ pbkdf2Iterations: 1 })
+  it('fails closed before deriving key material', async () => {
+    const svc = new WalletService({ pbkdf2Iterations: 1 })
     await svc.importWallet({ mnemonic: MNEMONIC_1, password: 'password123' })
-  })
 
-  it('throws DECRYPTION_FAILED when wallet is locked', async () => {
-    svc.lockWallet()
     await expect(svc.signMessage(message, 0, 'evm')).rejects.toMatchObject({
-      code: 'DECRYPTION_FAILED',
-    })
-  })
-
-  it('signs an EVM message and returns 64-byte signature', async () => {
-    const result = await svc.signMessage(message, 0, 'evm')
-    expect(result.signature).toBeInstanceOf(Uint8Array)
-    expect(result.signature.byteLength).toBe(64)
-    expect(result.signatureHex).toMatch(/^[0-9a-f]{128}$/)
-  })
-
-  it('signs an SVM message and returns 64-byte signature', async () => {
-    const result = await svc.signMessage(message, 0, 'svm')
-    expect(result.signature).toBeInstanceOf(Uint8Array)
-    expect(result.signature.byteLength).toBe(64)
-  })
-
-  it('signs a native message and returns 64-byte signature', async () => {
-    const result = await svc.signMessage(message, 0, 'native')
-    expect(result.signature).toBeInstanceOf(Uint8Array)
-    expect(result.signature.byteLength).toBe(64)
-  })
-
-  it('EVM sign + verifySignature round-trip succeeds', async () => {
-    const accounts = svc.getAccounts()
-    const evmEntry = accounts[0].addresses.find((a) => a.vm === 'evm')
-    if (!evmEntry) throw new Error('no evm entry')
-    const result = await svc.signMessage(message, 0, 'evm')
-    expect(
-      svc.verifySignature('evm', {
-        publicKeyHex: evmEntry.publicKeyHex,
-        message,
-        signature: result.signature,
-      }),
-    ).toBe(true)
-  })
-
-  it('SVM sign + verifySignature round-trip succeeds', async () => {
-    const accounts = svc.getAccounts()
-    const svmEntry = accounts[0].addresses.find((a) => a.vm === 'svm')
-    if (!svmEntry) throw new Error('no svm entry')
-    const result = await svc.signMessage(message, 0, 'svm')
-    expect(
-      svc.verifySignature('svm', {
-        publicKeyHex: svmEntry.publicKeyHex,
-        message,
-        signature: result.signature,
-      }),
-    ).toBe(true)
-  })
-
-  it('verifySignature returns false for tampered message', async () => {
-    const accounts = svc.getAccounts()
-    const evmEntry = accounts[0].addresses.find((a) => a.vm === 'evm')
-    if (!evmEntry) throw new Error('no evm entry')
-    const result = await svc.signMessage(message, 0, 'evm')
-    expect(
-      svc.verifySignature('evm', {
-        publicKeyHex: evmEntry.publicKeyHex,
-        message: new TextEncoder().encode('different message'),
-        signature: result.signature,
-      }),
-    ).toBe(false)
-  })
-
-  it('throws DERIVATION_FAILED for invalid account index', async () => {
-    await expect(svc.signMessage(message, -1, 'evm')).rejects.toMatchObject({
-      code: 'DERIVATION_FAILED',
+      code: 'RELEASE_CAPABILITY_DISABLED',
     })
   })
 })

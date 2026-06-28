@@ -24,7 +24,7 @@ const makeChain = (id: string, vm: ChainDefinition['vm'] = 'evm'): ChainDefiniti
   explorerTxPath: '/tx/{hash}',
   explorerAddressPath: '/address/{address}',
   nativeCurrency: { name: 'Token', symbol: 'TKN', decimals: 18 },
-  testnet: false,
+  testnet: true,
   enabled: true,
   logoKey: id,
 })
@@ -36,6 +36,16 @@ const chainC = makeChain('chain-c', 'native')
 // ─── register() ────────────────────────────────────────────────────────────
 
 describe('ChainRegistry — register()', () => {
+  it('rejects mainnet chains in a development release', () => {
+    const reg = new ChainRegistry()
+    const mainnet = { ...chainA, id: 'mainnet', testnet: false }
+
+    expect(() => reg.register(mainnet)).toThrow(
+      expect.objectContaining({ code: 'RELEASE_CAPABILITY_DISABLED' }),
+    )
+    expect(reg.size).toBe(0)
+  })
+
   it('registers a valid chain definition without throwing', () => {
     const reg = new ChainRegistry()
     expect(() => reg.register(chainA)).not.toThrow()

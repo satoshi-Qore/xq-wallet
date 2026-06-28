@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ClientProviders } from '@/lib/providers'
+import { ReleaseWarning } from '@/components/shared/ReleaseWarning'
 import './globals.css'
 
 /* ─── Fonts ──────────────────────────────────────────────────────────────── */
@@ -52,8 +53,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClientProviders>{children}</ClientProviders>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} flex h-dvh flex-col overflow-hidden antialiased`}
+      >
+        <ReleaseWarning />
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ClientProviders>{children}</ClientProviders>
+        </div>
       </body>
     </html>
   )

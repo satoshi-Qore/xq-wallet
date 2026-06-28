@@ -11,6 +11,7 @@
 
 import { WalletError } from '@/domain/errors'
 import type { ChainDefinition } from '@/domain/chain'
+import { assertReleaseCapability } from '@/config/releasePolicy'
 import type { ChainRegistryOptions } from './types'
 
 export class ChainRegistry {
@@ -30,6 +31,10 @@ export class ChainRegistry {
    *         is already registered. Call unregister() first to replace it.
    */
   register(definition: ChainDefinition): void {
+    if (!definition.testnet) {
+      assertReleaseCapability('mainnet')
+    }
+
     if (this._chains.has(definition.id)) {
       throw new WalletError(
         'CHAIN_ALREADY_REGISTERED',

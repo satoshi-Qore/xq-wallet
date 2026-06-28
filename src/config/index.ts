@@ -52,8 +52,7 @@ export const apiConfig = {
 export const featureFlags = {
   enableTestnet: process.env.NEXT_PUBLIC_ENABLE_TESTNET === 'true',
   enableDevtools:
-    process.env.NEXT_PUBLIC_ENABLE_DEVTOOLS === 'true' ||
-    process.env.NODE_ENV === 'development',
+    process.env.NEXT_PUBLIC_ENABLE_DEVTOOLS === 'true' || process.env.NODE_ENV === 'development',
 } as const
 
 // ─── Aggregated export ─────────────────────────────────────────────────────
@@ -66,3 +65,10 @@ export const config = {
 } as const
 
 export type AppConfig = typeof config
+
+export {
+  ACTIVE_RELEASE_POLICY,
+  assertReleaseCapability,
+  type ReleaseCapability,
+  type ReleasePolicy,
+} from './releasePolicy'

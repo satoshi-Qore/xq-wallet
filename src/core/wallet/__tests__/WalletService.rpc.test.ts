@@ -72,7 +72,7 @@ describe('WalletService.getLatestBlock', () => {
 // ─── submitTransaction ────────────────────────────────────────────────────────
 
 describe('WalletService.submitTransaction', () => {
-  it('throws RPC_NOT_CONNECTED with NullRpcProvider', async () => {
+  it('fails closed before reaching the RPC provider', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     const rawTx = new Uint8Array([0xf8, 0x6a, 0x01])
     let err: unknown
@@ -83,11 +83,11 @@ describe('WalletService.submitTransaction', () => {
     }
     expect(WalletError.isWalletError(err)).toBe(true)
     if (WalletError.isWalletError(err)) {
-      expect(err.code).toBe('RPC_NOT_CONNECTED')
+      expect(err.code).toBe('RELEASE_CAPABILITY_DISABLED')
     }
   })
 
-  it('throws UNSUPPORTED_CHAIN for unknown chain', async () => {
+  it('does not disclose provider state while broadcasting is disabled', async () => {
     const svc = new WalletService({ pbkdf2Iterations: 1 })
     let err: unknown
     try {
@@ -96,7 +96,9 @@ describe('WalletService.submitTransaction', () => {
       err = e
     }
     expect(WalletError.isWalletError(err)).toBe(true)
-    if (WalletError.isWalletError(err)) expect(err.code).toBe('UNSUPPORTED_CHAIN')
+    if (WalletError.isWalletError(err)) {
+      expect(err.code).toBe('RELEASE_CAPABILITY_DISABLED')
+    }
   })
 })
 

@@ -15,6 +15,10 @@
 // ─── Error Codes ───────────────────────────────────────────────────────────
 
 export type WalletErrorCode =
+  // ── Release Policy ───────────────────────────────────────────────────────
+  /** Capability is unavailable because this is not an approved production release */
+  | 'RELEASE_CAPABILITY_DISABLED'
+
   // ── BIP-39 ──────────────────────────────────────────────────────────────
   /** The mnemonic string is structurally invalid (wrong format, missing words) */
   | 'INVALID_MNEMONIC'
@@ -86,12 +90,18 @@ export type WalletErrorCode =
   | 'INSUFFICIENT_BALANCE'
 
   // ── Storage ──────────────────────────────────────────────────────────────
-  /** IndexedDB or other storage backend is unavailable */
+  /** IndexedDB or other storage backend is unavailable (incognito, security policy) */
   | 'STORAGE_UNAVAILABLE'
   /** Storage quota exceeded — cannot write new data */
   | 'STORAGE_QUOTA_EXCEEDED'
   /** IndexedDB schema migration failed during version upgrade */
   | 'STORAGE_SCHEMA_ERROR'
+  /** A vault record with the same walletId already exists — use replace() intentionally */
+  | 'VAULT_ALREADY_EXISTS'
+  /** IndexedDB schema migration failed — onupgradeneeded threw before completing */
+  | 'SCHEMA_MIGRATION_FAILED'
+  /** Stored record schemaVersion is newer than this build supports — app needs update */
+  | 'STORAGE_VERSION_MISMATCH'
 
   // ── Generic ──────────────────────────────────────────────────────────────
   /** An unexpected error occurred — see internalCause for details */

@@ -6,3 +6,4 @@ export { NetworkBadge } from './NetworkBadge'
 export type { NetworkEnvironment } from './NetworkBadge'
 
 export { ThemeToggle } from './ThemeToggle'
+export { ReleaseWarning } from './ReleaseWarning'

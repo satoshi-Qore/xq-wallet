@@ -50,7 +50,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     // P0-01: bg-surface-subtle Tailwind token
-    <div className="flex h-screen overflow-hidden bg-surface-subtle">
+    <div className="flex h-full overflow-hidden bg-surface-subtle">
       {/* Desktop sidebar — always visible on lg+ */}
       <Sidebar />
 

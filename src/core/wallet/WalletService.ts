@@ -29,6 +29,7 @@
  */
 
 import { WalletError } from '@/domain/errors'
+import { assertReleaseCapability } from '@/config/releasePolicy'
 import type { WalletMetadata, AccountMetadata, WordCount } from '@/domain/wallet'
 import type { EncryptedVault, VaultPayload, PBKDF2Params } from '@/domain/vault'
 import type { AnyAsset, Balance, Portfolio, PortfolioEntry } from '@/domain/asset'
@@ -397,6 +398,7 @@ export class WalletService {
    * @throws WalletError('DERIVATION_FAILED') on key derivation or signing failure.
    */
   async signMessage(message: Uint8Array, accountIndex: number, vm: VMType): Promise<SignResult> {
+    assertReleaseCapability('transactionSigning')
     this._assertUnlocked()
     const adapter = getAdapter(vm)
     const privateKey = await derivePrivateKeyForSigning(this.sessionMnemonic!, accountIndex, vm)
@@ -690,6 +692,7 @@ export class WalletService {
    * @throws WalletError('INVALID_NETWORK') if no provider is registered for chainId.
    */
   async submitTransaction(rawTx: Uint8Array, chainId: string): Promise<string> {
+    assertReleaseCapability('transactionBroadcasting')
     return this._getProvider(chainId).sendTransaction(rawTx)
   }
 

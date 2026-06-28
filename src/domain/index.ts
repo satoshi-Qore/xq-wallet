@@ -90,3 +90,15 @@ export type {
   RpcHealthMetrics,
   RpcMetricsSnapshot,
 } from './rpc'
+
+// Storage (P0.3)
+export { VAULT_STORAGE_SCHEMA_VERSION, IDB_SCHEMA_VERSION } from './storage'
+export type {
+  IntegrityAlgorithm,
+  VaultStorageRecord,
+  VaultRecordMetadata,
+  VaultRecordIntegrity,
+  WalletListEntry,
+  VerificationResult,
+  CreateVaultParams,
+} from './storage'
