@@ -25,6 +25,7 @@ import { VAULT_STORAGE_SCHEMA_VERSION, IDB_SCHEMA_VERSION } from '../../domain/s
 import type { VaultStorageRecord, WalletListEntry, VerificationResult } from '../../domain/storage'
 import type { IVaultStorageAdapter } from '../../core/persistence/IVaultStorageAdapter'
 import { VaultIntegrityChecker } from './VaultIntegrityChecker'
+import { validateVaultRecord } from './VaultRecordValidator'
 import { SchemaMigrationRunner } from './SchemaMigrationRunner'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -101,6 +102,19 @@ export class IndexedDBVaultAdapter implements IVaultStorageAdapter {
     const record = await this._loadRaw(walletId)
     if (record === null) return null
 
+    // Fix 3 (P0.3.1): Validate shape before trusting the record.
+    // validateVaultRecord() throws VAULT_CORRUPTED for any shape violation.
+    try {
+      validateVaultRecord(record)
+    } catch (err) {
+      if (err instanceof WalletError) throw err
+      throw new WalletError(
+        'VAULT_CORRUPTED',
+        `Vault '${walletId}' failed structural validation.`,
+        err,
+      )
+    }
+
     if (record.schemaVersion > VAULT_STORAGE_SCHEMA_VERSION) {
       throw new WalletError(
         'STORAGE_VERSION_MISMATCH',
@@ -141,9 +155,20 @@ export class IndexedDBVaultAdapter implements IVaultStorageAdapter {
       throw new WalletError('VAULT_NOT_FOUND', `No vault found with id '${walletId}'.`)
     }
 
-    // Best-effort: overwrite ciphertext with random bytes before deleting.
-    // Physical erasure on disk is not guaranteed — see design §5.4.
-    await this._overwriteWithGarbage(existing)
+    // Fix 2 (P0.3.1): Removed pre-delete overwrite-with-garbage.
+    // The previous approach called _overwriteWithGarbage() BEFORE the IDB delete
+    // transaction. If the delete failed, the record was left with garbage ciphertext
+    // — corrupted but still present, with no way to recover. That is worse than
+    // leaving the original encrypted data intact.
+    //
+    // Physical erasure limitation: IndexedDB offers no zero-on-delete guarantee.
+    // The OS/storage layer may retain the bytes until the page is reused. This is
+    // a documented hardware-layer limitation; mitigating it requires full-disk
+    // encryption (e.g. FileVault, BitLocker) at the OS level, which is outside
+    // the scope of this application.
+    //
+    // The IDB delete transaction is atomic: if it fails, the original encrypted
+    // record remains intact and the caller receives STORAGE_UNAVAILABLE.
 
     const db = await this._dbPromise
     await idbRequest(() => {
@@ -337,47 +362,6 @@ export class IndexedDBVaultAdapter implements IVaultStorageAdapter {
         }
       }).then((v) => v ?? null),
     )
-  }
-
-  /**
-   * Best-effort overwrite: replace ciphertext with random bytes before deletion.
-   * Errors are silently ignored — deletion continues regardless.
-   */
-  private async _overwriteWithGarbage(record: VaultStorageRecord): Promise<void> {
-    try {
-      const randomBytes = new Uint8Array(64)
-      globalThis.crypto.getRandomValues(randomBytes)
-      const garbageCiphertext = Array.from(randomBytes)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('')
-
-      const garbage: VaultStorageRecord = {
-        ...record,
-        encryptedVault: {
-          ...record.encryptedVault,
-          crypto: {
-            ...record.encryptedVault.crypto,
-            ciphertext: garbageCiphertext,
-          },
-        },
-        integrity: { checksum: '0'.repeat(64), algorithm: 'HMAC-SHA-256' },
-      }
-
-      const db = await this._dbPromise
-      await new Promise<void>((resolve) => {
-        try {
-          const tx = db.transaction([STORE_VAULTS], 'readwrite')
-          const store = tx.objectStore(STORE_VAULTS)
-          store.put(garbage)
-          tx.oncomplete = () => resolve()
-          tx.onerror = () => resolve() // best-effort — ignore failure
-        } catch {
-          resolve()
-        }
-      })
-    } catch {
-      // Best-effort — never let a garbage-write failure block the actual delete.
-    }
   }
 }
 

@@ -103,6 +103,12 @@ export type WalletErrorCode =
   /** Stored record schemaVersion is newer than this build supports — app needs update */
   | 'STORAGE_VERSION_MISMATCH'
 
+  // ── Configuration ────────────────────────────────────────────────────────
+  /** WalletService was constructed without a durable IVaultPersistenceService in production */
+  | 'PERSISTENCE_NOT_CONFIGURED'
+  /** KDF parameters are invalid — non-integer, out-of-range, or unsafe */
+  | 'INVALID_KDF_PARAMS'
+
   // ── Generic ──────────────────────────────────────────────────────────────
   /** An unexpected error occurred — see internalCause for details */
   | 'UNKNOWN'
@@ -163,3 +169,6 @@ export class WalletError extends Error {
     return err instanceof WalletError
   }
 }
+
+// NOTE: This file is intentionally not edited via Write tool to avoid FUSE issues.
+// Changes tracked in shadow only during this session.

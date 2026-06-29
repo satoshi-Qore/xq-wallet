@@ -39,8 +39,8 @@ function makeEncryptedVault(
     crypto: {
       algorithm: 'AES-GCM',
       ciphertext,
-      iv: 'aXZpdmVjdG9y',
-      salt: 'c2FsdHNhbHQ=',
+      iv: 'AAAAAAAAAAAAAAAA', // 12 bytes (AES-GCM requirement)
+      salt: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', // 32 bytes (PBKDF2 requirement)
       kdf: 'PBKDF2',
       kdfParams: { hash: 'SHA-256', iterations: 600_000, keyLength: 32 },
     },
@@ -65,10 +65,6 @@ function makeService(): {
 
 // ── Spy adapter helpers ───────────────────────────────────────────────────────
 
-/**
- * Simple in-memory IVaultStorageAdapter for targeted failure tests.
- * Tracks delete calls for rollback verification.
- */
 interface SpyAdapter extends IVaultStorageAdapter {
   readonly store: Map<string, VaultStorageRecord>
   readonly deleteCalls: string[]
@@ -200,7 +196,7 @@ describe('VaultPersistenceService.createWallet()', () => {
     await svc.createWallet('w-int', ev, { displayName: 'Integrity', vm: 'evm' })
     const stored = spy.store.get('w-int')
     expect(stored?.integrity.algorithm).toBe('HMAC-SHA-256')
-    expect(stored?.integrity.checksum).toHaveLength(64) // 32-byte hex
+    expect(stored?.integrity.checksum).toHaveLength(64)
   })
 
   it('checksum is keyed by walletId — different ids produce different checksums', async () => {
@@ -281,9 +277,7 @@ describe('VaultPersistenceService.createWallet()', () => {
       }),
     ).rejects.toMatchObject({ code: 'VAULT_CORRUPTED' })
 
-    // Compensating delete must have been called.
     expect(spy.deleteCalls).toContain('w-corrupt')
-    // Record must be gone from the store.
     expect(spy.store.has('w-corrupt')).toBe(false)
   })
 
@@ -484,13 +478,10 @@ describe('VaultPersistenceService.rotatePassword()', () => {
       code: 'STORAGE_UNAVAILABLE',
     })
 
-    // Original record must still be in the store.
     expect(spy.store.get('atomic')?.encryptedVault.crypto.ciphertext).toBe('original-cipher')
   })
 
   it('throws VAULT_CORRUPTED when post-rotation verify fails', async () => {
-    // First verify call comes from createWallet (must succeed).
-    // Second verify call comes from rotatePassword (simulated failure).
     let verifyCallCount = 0
     const spy = makeSpyAdapter({
       async verify(walletId): Promise<VerificationResult> {
@@ -517,7 +508,7 @@ describe('VaultPersistenceService.rotatePassword()', () => {
     await expect(svc.rotatePassword('rot-corrupt', newEv)).rejects.toMatchObject({
       code: 'VAULT_CORRUPTED',
     })
-    expect(verifyCallCount).toBe(2) // createWallet + rotatePassword each called verify once
+    expect(verifyCallCount).toBe(2)
   })
 })
 
@@ -626,7 +617,6 @@ describe('VaultPersistenceService.verifyIntegrity()', () => {
   })
 
   it('never throws — always resolves', async () => {
-    // For a completely missing ID, should resolve not reject.
     await expect(service.verifyIntegrity('any-id')).resolves.toBeDefined()
   })
 

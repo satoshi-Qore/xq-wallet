@@ -22,8 +22,8 @@ function makeEncryptedVault(walletId: string, ciphertext = 'Y2lwaGVydGV4dA=='): 
     crypto: {
       algorithm: 'AES-GCM',
       ciphertext,
-      iv: 'aXZpdmVjdG9y',
-      salt: 'c2FsdHNhbHQ=',
+      iv: 'AAAAAAAAAAAAAAAA', // 12 bytes (AES-GCM)
+      salt: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', // 32 bytes (PBKDF2)
       kdf: 'PBKDF2',
       kdfParams: { hash: 'SHA-256', iterations: 600_000, keyLength: 32 },
     },
@@ -500,5 +500,120 @@ describe('IndexedDBVaultAdapter — security properties', () => {
     expect(WalletError.isWalletError(err)).toBe(true)
     // Must not leak the ciphertext value into the error message
     expect((err as WalletError).message).not.toContain(record.encryptedVault.crypto.ciphertext)
+  })
+})
+
+// ── Fix 2 (P0.3.1): Safe transactional deletion ───────────────────────────────
+
+describe('IndexedDBVaultAdapter.delete() — Fix 2 (no overwrite-before-delete)', () => {
+  it('delete() removes the record — load() returns null afterwards', async () => {
+    const adapter = makeAdapter()
+    const record = await makeRecord('del-fix2', 'Delete Fix2')
+    await adapter.save(record)
+    await adapter.delete('del-fix2')
+    const loaded = await adapter.load('del-fix2')
+    expect(loaded).toBeNull()
+  })
+
+  it('delete() is atomic — if load() returns null the record is gone (no corrupted remnant)', async () => {
+    const adapter = makeAdapter()
+    const record = await makeRecord('del-atomic', 'Atomic Delete')
+    await adapter.save(record)
+
+    // Delete, then immediately verify it is cleanly gone (no garbage left behind)
+    await adapter.delete('del-atomic')
+    const raw = await adapter.load('del-atomic')
+    expect(raw).toBeNull()
+
+    // exists() should also return false
+    const present = await adapter.exists('del-atomic')
+    expect(present).toBe(false)
+  })
+
+  it('delete() throws VAULT_NOT_FOUND for a non-existent walletId', async () => {
+    const adapter = makeAdapter()
+    await expect(adapter.delete('ghost-wallet')).rejects.toMatchObject({
+      code: 'VAULT_NOT_FOUND',
+    })
+  })
+
+  it('other records are unaffected by delete()', async () => {
+    const adapter = makeAdapter()
+    const keep = await makeRecord('del-keep', 'Keep')
+    const gone = await makeRecord('del-gone', 'Gone')
+    await adapter.save(keep)
+    await adapter.save(gone)
+    await adapter.delete('del-gone')
+
+    const loaded = await adapter.load('del-keep')
+    expect(loaded).not.toBeNull()
+    expect(loaded!.walletId).toBe('del-keep')
+  })
+})
+
+// ── Fix 3 (P0.3.1): Runtime validation via validateVaultRecord ────────────────
+
+describe('IndexedDBVaultAdapter.load() — Fix 3 (structural validation)', () => {
+  it('load() succeeds for a valid, correctly-checksummed record', async () => {
+    const adapter = makeAdapter()
+    const record = await makeRecord('val-ok', 'Validation OK')
+    await adapter.save(record)
+    const loaded = await adapter.load('val-ok')
+    expect(loaded).not.toBeNull()
+    expect(loaded!.walletId).toBe('val-ok')
+  })
+
+  it('load() throws VAULT_CORRUPTED for a record with a tampered walletId inside encryptedVault', async () => {
+    // Bypass integrity to inject a shape-invalid record directly via save()
+    const adapter = makeAdapter()
+    const record = await makeRecord('val-mismatch', 'Mismatch')
+
+    // Save a record that will pass the HMAC check (we'll tamper after save via IDB directly)
+    // Instead, save with wrong inner walletId to force validation failure
+    const tampered: VaultStorageRecord = {
+      ...record,
+      encryptedVault: {
+        ...record.encryptedVault,
+        walletId: 'different-id', // inner walletId mismatch
+      },
+      integrity: record.integrity, // checksum still references outer walletId
+    }
+
+    // Save the tampered record (bypasses integrity since we bypass validation on write)
+    await adapter.save(tampered)
+
+    // load() should detect shape violation
+    await expect(adapter.load('val-mismatch')).rejects.toMatchObject({
+      code: 'VAULT_CORRUPTED',
+    })
+  })
+
+  it('load() throws VAULT_CORRUPTED for a record with unsupported algorithm', async () => {
+    const adapter = makeAdapter()
+    const record = await makeRecord('val-algo', 'Bad Algo')
+    const tampered: VaultStorageRecord = {
+      ...record,
+      encryptedVault: {
+        ...record.encryptedVault,
+        crypto: {
+          ...record.encryptedVault.crypto,
+          algorithm: 'AES-CBC' as 'AES-GCM',
+        },
+      },
+    }
+    await adapter.save(tampered)
+    await expect(adapter.load('val-algo')).rejects.toMatchObject({ code: 'VAULT_CORRUPTED' })
+  })
+
+  it('load() throws VAULT_CORRUPTED for a record missing the integrity block', async () => {
+    const adapter = makeAdapter()
+    const record = await makeRecord('val-noint', 'No Integrity')
+    // Save without integrity (cast away type)
+    const tampered = {
+      ...record,
+      integrity: undefined as unknown as VaultStorageRecord['integrity'],
+    }
+    await adapter.save(tampered)
+    await expect(adapter.load('val-noint')).rejects.toMatchObject({ code: 'VAULT_CORRUPTED' })
   })
 })

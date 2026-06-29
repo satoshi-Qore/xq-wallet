@@ -73,6 +73,9 @@ import type {
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const DEFAULT_PBKDF2_ITERATIONS = 600_000 // OWASP 2023 minimum
+/** Fix 4 (P0.3.1): KDF iteration bounds. */
+const MIN_PBKDF2_ITERATIONS = 1 // Tests may use 1; production guard is in the constructor
+const MAX_PBKDF2_ITERATIONS = 10_000_000 // Sane upper limit: beyond this a deliberate DoS
 const MIN_PASSWORD_LENGTH = 8
 const WALLET_SCHEMA_VERSION = 1 as const
 const VAULT_SCHEMA_VERSION = 1 as const
@@ -158,6 +161,15 @@ export interface WalletServiceOptions {
    * loudly rather than silently (e.g. during onboarding gating checks).
    */
   readonly persistenceService?: IVaultPersistenceService
+  /**
+   * Fix 1 (P0.3.1): When true, throw PERSISTENCE_NOT_CONFIGURED if the resolved
+   * persistence service is a NoOpVaultPersistenceService.
+   *
+   * Set to `true` in the production composition root to enforce that a real
+   * IVaultPersistenceService is configured before any wallet operations.
+   * Defaults to `false` to preserve backward compatibility for dev/test usage.
+   */
+  readonly enforceRealPersistence?: boolean
 }
 
 export interface CreateWalletOptions {
@@ -254,12 +266,30 @@ export class WalletService {
 
   constructor(options: WalletServiceOptions = {}) {
     this.pbkdf2Iterations = options.pbkdf2Iterations ?? DEFAULT_PBKDF2_ITERATIONS
+    // Fix 4 (P0.3.1): Validate pbkdf2Iterations at construction time.
+    assertValidKdfIterations(this.pbkdf2Iterations, 'WalletServiceOptions.pbkdf2Iterations')
     this.assetRegistry = options.assetRegistry ?? createDefaultAssetRegistry()
     this.balanceProvider = options.balanceProvider ?? new MockBalanceProvider()
     this.feeEstimator = options.feeEstimator ?? new MockFeeEstimator()
     this.rpcRegistry = options.rpcRegistry ?? createDefaultRpcRegistry()
     this.jsonRpcClientRegistry = options.jsonRpcClientRegistry ?? new JsonRpcClientRegistry()
     this.persistenceService = options.persistenceService ?? new NoOpVaultPersistenceService()
+
+    // Fix 1 (P0.3.1): Fail closed when caller explicitly requires durable persistence.
+    // Production composition roots should set enforceRealPersistence: true.
+    // NoOpVaultPersistenceService silently discards all writes — must never be used
+    // in production without an explicit acknowledgement.
+    if (
+      (options.enforceRealPersistence ?? false) &&
+      this.persistenceService instanceof NoOpVaultPersistenceService
+    ) {
+      throw new WalletError(
+        'PERSISTENCE_NOT_CONFIGURED',
+        'WalletService was constructed with enforceRealPersistence: true but no ' +
+          'durable IVaultPersistenceService was provided. ' +
+          'Supply one via WalletServiceOptions.persistenceService.',
+      )
+    }
   }
 
   // ─── State Accessors ──────────────────────────────────────────────────────
@@ -1147,6 +1177,9 @@ async function encryptVault(
   now: number,
   originalCreatedAt?: number,
 ): Promise<EncryptedVault> {
+  // Fix 4 (P0.3.1): Validate iterations before deriving key.
+  assertValidKdfIterations(iterations, 'encryptVault iterations')
+
   const salt = globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)))
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)))
   const key = await deriveAesKey(password, salt, iterations, ['encrypt'])
@@ -1182,11 +1215,20 @@ async function encryptVault(
 }
 
 async function decryptVault(vault: EncryptedVault, password: string): Promise<VaultPayload> {
-  // Guard: refuse vaults with below-minimum iterations (e.g. attacker-crafted).
-  if (vault.crypto.kdfParams.iterations < 1) {
+  // Fix 4 (P0.3.1): Strict KDF parameter validation before key derivation.
+  // The old check only rejected < 1; now we reject non-integers, non-safe, and > MAX.
+  const { iterations } = vault.crypto.kdfParams
+  if (
+    typeof iterations !== 'number' ||
+    !Number.isInteger(iterations) ||
+    !Number.isSafeInteger(iterations) ||
+    iterations < MIN_PBKDF2_ITERATIONS ||
+    iterations > MAX_PBKDF2_ITERATIONS
+  ) {
     throw new WalletError(
-      'VAULT_VERSION_UNSUPPORTED',
-      'Vault uses an unsupported key derivation configuration.',
+      'INVALID_KDF_PARAMS',
+      `Vault has invalid PBKDF2 iterations (${String(iterations)}). ` +
+        `Must be an integer in [${MIN_PBKDF2_ITERATIONS}, ${MAX_PBKDF2_ITERATIONS}].`,
     )
   }
 
@@ -1214,6 +1256,26 @@ async function decryptVault(vault: EncryptedVault, password: string): Promise<Va
 }
 
 // ─── Internal Validators ───────────────────────────────────────────────────
+
+/**
+ * Fix 4 (P0.3.1): Validate a PBKDF2 iteration count.
+ * Rejects: non-number, NaN, Infinity, non-integer, non-safe-integer, ≤ 0, > MAX.
+ */
+function assertValidKdfIterations(iterations: unknown, context: string): void {
+  if (
+    typeof iterations !== 'number' ||
+    !Number.isInteger(iterations) ||
+    !Number.isSafeInteger(iterations) ||
+    iterations < MIN_PBKDF2_ITERATIONS ||
+    iterations > MAX_PBKDF2_ITERATIONS
+  ) {
+    throw new WalletError(
+      'INVALID_KDF_PARAMS',
+      `${context}: PBKDF2 iterations must be an integer in ` +
+        `[${MIN_PBKDF2_ITERATIONS}, ${MAX_PBKDF2_ITERATIONS}] (got ${String(iterations)}).`,
+    )
+  }
+}
 
 function assertValidPassword(password: string): void {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {

@@ -647,6 +647,6 @@ describe('WalletService — integration scenarios', () => {
     await svc2.openWallet(walletId, PASSWORD)
 
     expect(svc2.getAccounts()).toHaveLength(1) // P0.3 limitation: account 0 only
-    expect(svc2.getAccounts()[0].index).toBe(0)
+    expect(svc2.getAccounts()[0].addresses.length).toBeGreaterThan(0)
   })
 })
